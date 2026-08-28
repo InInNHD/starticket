@@ -97,6 +97,8 @@ Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Passwo
 - [x] Testcontainers 真实 MySQL、Redis、RabbitMQ 并发一致性测试
 - [x] Prometheus 业务指标、Grafana 预置仪表盘、Swagger 和 GitHub Actions
 - [x] MySQL-only 与 Redis Lua + MySQL 三轮性能对比及 SQL 防超卖断言
+- [x] 活动与订单服务端搜索分页、主办方销售看板和管理员订单查询
+- [x] 草稿场次编辑停用、票档编辑启停和运营查询索引
 
 ## 版本边界
 

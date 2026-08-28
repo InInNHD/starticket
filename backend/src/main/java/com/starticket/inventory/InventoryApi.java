@@ -44,7 +44,7 @@ class InventoryController {
         List<String> names = jdbc.query("""
                 SELECT p.name FROM st_performance p
                 JOIN st_event e ON e.id = p.event_id
-                WHERE p.id = ? AND e.status IN ('APPROVED', 'ON_SALE')
+                WHERE p.id = ? AND p.status = 'SCHEDULED' AND e.status IN ('APPROVED', 'ON_SALE')
                 """, (rs, row) -> rs.getString(1), performanceId);
         if (names.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "场次不存在");

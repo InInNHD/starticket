@@ -40,6 +40,15 @@ record CreateTicketTierRequest(
 ) {
 }
 
+record UpdateTicketTierRequest(
+        @NotBlank @Size(max = 60) String name,
+        @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal price,
+        @NotBlank @Pattern(regexp = "#[0-9a-fA-F]{6}") String color,
+        @Min(1) @Max(6) int purchaseLimit,
+        boolean enabled
+) {
+}
+
 record RejectEventRequest(@NotBlank @Size(max = 500) String note) {
 }
 

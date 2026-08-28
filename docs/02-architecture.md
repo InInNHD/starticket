@@ -200,8 +200,13 @@ GET    /api/organizer/events
 GET    /api/organizer/events/{eventId}
 PUT    /api/organizer/events/{eventId}
 POST   /api/organizer/events/{eventId}/performances
+PUT    /api/organizer/performances/{performanceId}
+POST   /api/organizer/performances/{performanceId}/cancel
 POST   /api/organizer/performances/{performanceId}/tiers
+PUT    /api/organizer/tiers/{tierId}
 POST   /api/organizer/events/{eventId}/submit
+GET    /api/organizer/events/{eventId}/sales-summary
+GET    /api/organizer/events/{eventId}/orders
 GET    /api/organizer/venues
 GET    /api/organizer/venues/{venueId}/layout
 GET    /api/admin/events/pending
@@ -215,12 +220,12 @@ POST   /api/admin/areas/{areaId}/seats/generate
 GET    /api/admin/venues/{venueId}/layout
 GET    /api/admin/outbox/dead
 POST   /api/admin/outbox/{id}/retry
+GET    /api/admin/orders
 ```
 
 ### 核销端
 
 ```text
-POST   /api/check-in/validate
 POST   /api/check-in/redeem
 ```
 
@@ -234,6 +239,7 @@ POST   /api/check-in/redeem
 6. [完成] Redis 预锁、缓存和限流。
 7. [完成] RabbitMQ、Outbox、重试、死信和超时补偿。
 8. [完成] 指标、集成测试、Docker、Swagger、CI 和 k6 脚本。
-9. [待真实环境] 执行并记录 k6 压测，形成可信简历数据。
+9. [完成] 执行 MySQL 与 Redis 两组真实压测并记录防超卖断言。
+10. [完成] 增加服务端分页搜索、运营销售看板、平台订单查询和配置编辑。
 
 每一步都必须保持应用可运行，不先创建空的微服务或“以后可能使用”的抽象层。

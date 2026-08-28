@@ -111,6 +111,69 @@ input {
   width: min(320px, 100%);
 }
 
+.search-row,
+.config-actions,
+.tier-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-row {
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.search-row .el-input {
+  max-width: 340px;
+}
+
+.search-row .el-select {
+  width: 190px;
+}
+
+.order-filter {
+  margin-top: 8px;
+}
+
+.tier-row {
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.stat-grid > div {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.stat-grid span,
+.stat-grid strong {
+  display: block;
+}
+
+.stat-grid span {
+  color: #aaaab5;
+}
+
+.stat-grid strong {
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.el-pagination {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
 .dashboard-header,
 .panel-heading,
 .generation-options {
@@ -288,5 +351,20 @@ input {
 
   .ticket-content {
     grid-template-columns: 1fr;
+  }
+
+  .search-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-row .el-input,
+  .search-row .el-select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

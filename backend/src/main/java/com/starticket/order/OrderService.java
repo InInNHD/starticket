@@ -2,6 +2,7 @@ package com.starticket.order;
 
 import com.starticket.account.AccountLookup;
 import com.starticket.common.ApiException;
+import com.starticket.common.PageResult;
 import com.starticket.infrastructure.RedisSeatGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
@@ -22,11 +23,15 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Service
 public class OrderService {
+
+    private static final Set<String> ORDER_STATUSES = Set.of(
+            "PENDING_PAYMENT", "PAID", "CANCELLED", "EXPIRED", "REFUNDING", "REFUNDED");
 
     private final JdbcTemplate jdbc;
     private final AccountLookup accounts;
@@ -166,10 +171,20 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public List<OrderView> list(String username) {
+    public PageResult<OrderView> list(String username, String status, int page, int size) {
         long userId = accounts.requireUserId(username);
-        return jdbc.query("SELECT order_no FROM st_order WHERE user_id = ? ORDER BY created_at DESC",
-                (rs, row) -> rs.getString(1), userId).stream().map(orderNo -> requireOrder(orderNo, userId)).toList();
+        String normalizedStatus = normalizeStatus(status);
+        Long total = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM st_order
+                WHERE user_id = ? AND (? IS NULL OR status = ?)
+                """, Long.class, userId, normalizedStatus, normalizedStatus);
+        List<OrderView> content = jdbc.query("""
+                SELECT order_no FROM st_order
+                WHERE user_id = ? AND (? IS NULL OR status = ?)
+                ORDER BY created_at DESC LIMIT ? OFFSET ?
+                """, (rs, row) -> rs.getString(1), userId, normalizedStatus, normalizedStatus, size, page * size)
+                .stream().map(orderNo -> requireOrder(orderNo, userId)).toList();
+        return PageResult.of(content, page, size, total == null ? 0 : total);
     }
 
     @Transactional(readOnly = true)
@@ -318,6 +333,15 @@ public class OrderService {
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    static String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) return null;
+        String normalized = status.trim().toUpperCase();
+        if (!ORDER_STATUSES.contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "订单状态无效");
+        }
+        return normalized;
     }
 
     private record LockedSeat(long inventoryId, long seatId, String seatCode, long tierId,

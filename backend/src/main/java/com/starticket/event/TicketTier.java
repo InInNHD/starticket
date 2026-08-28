@@ -57,6 +57,16 @@ class TicketTier {
         return tier;
     }
 
+    void update(String name, BigDecimal price, String color, int purchaseLimit, boolean enabled) {
+        this.name = name;
+        this.price = price;
+        this.color = color;
+        this.purchaseLimit = purchaseLimit;
+        this.enabled = enabled;
+    }
+
+    Performance getPerformance() { return performance; }
+
     Long getId() { return id; }
     Long getPerformanceId() { return performance.getId(); }
     Long getAreaId() { return areaId; }

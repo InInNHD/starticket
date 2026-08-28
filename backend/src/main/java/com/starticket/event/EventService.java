@@ -2,8 +2,11 @@ package com.starticket.event;
 
 import com.starticket.account.AccountLookup;
 import com.starticket.common.ApiException;
+import com.starticket.common.PageResult;
 import com.starticket.inventory.InventoryInitializer;
 import com.starticket.venue.VenueService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -55,9 +58,10 @@ class EventService {
     }
 
     @Transactional(readOnly = true)
-    List<EventSummary> listOwned(String username) {
+    PageResult<EventSummary> listOwned(String username, String keyword, EventStatus status, int page, int size) {
         long organizerId = accounts.requireUserId(username);
-        return events.findByOrganizerIdOrderByUpdatedAtDesc(organizerId).stream().map(EventSummary::from).toList();
+        Page<TicketEvent> result = events.searchOwned(organizerId, cleanSearch(keyword), status, PageRequest.of(page, size));
+        return PageResult.of(result.stream().map(EventSummary::from).toList(), page, size, result.getTotalElements());
     }
 
     @Transactional(readOnly = true)
@@ -77,9 +81,38 @@ class EventService {
     }
 
     @Transactional
+    PerformanceView updatePerformance(Long performanceId, String username, CreatePerformanceRequest request) {
+        Performance performance = requirePerformance(performanceId);
+        TicketEvent event = performance.getEvent();
+        requireOwner(event, username);
+        event.requireEditable();
+        venues.requireEnabledVenue(request.venueId());
+        validateSchedule(request);
+        if (!performance.getVenueId().equals(request.venueId()) && tiers.existsByPerformance_Id(performanceId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "已配置票档的场次不能更换场馆");
+        }
+        performance.update(request.venueId(), clean(request.name()), request.startsAt(), request.salesStartAt(),
+                request.salesEndAt());
+        evict(event.getId());
+        return performanceView(performance, tiers.findByPerformance_IdInOrderByPriceAsc(List.of(performanceId)).stream()
+                .map(TicketTierView::from).toList());
+    }
+
+    @Transactional
+    PerformanceView cancelPerformance(Long performanceId, String username) {
+        Performance performance = requirePerformance(performanceId);
+        TicketEvent event = performance.getEvent();
+        requireOwner(event, username);
+        event.requireEditable();
+        performance.cancel();
+        evict(event.getId());
+        return performanceView(performance, tiers.findByPerformance_IdInOrderByPriceAsc(List.of(performanceId)).stream()
+                .map(TicketTierView::from).toList());
+    }
+
+    @Transactional
     TicketTierView addTicketTier(Long performanceId, String username, CreateTicketTierRequest request) {
-        Performance performance = performances.findById(performanceId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "场次不存在"));
+        Performance performance = requirePerformance(performanceId);
         requireOwner(performance.getEvent(), username);
         performance.getEvent().requireEditable();
         venues.requireAreaWithSeats(performance.getVenueId(), request.areaId());
@@ -92,14 +125,29 @@ class EventService {
     }
 
     @Transactional
+    TicketTierView updateTicketTier(Long tierId, String username, UpdateTicketTierRequest request) {
+        TicketTier tier = tiers.findById(tierId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "票档不存在"));
+        TicketEvent event = tier.getPerformance().getEvent();
+        requireOwner(event, username);
+        event.requireEditable();
+        tier.update(clean(request.name()), request.price(), request.color().toUpperCase(), request.purchaseLimit(),
+                request.enabled());
+        evict(event.getId());
+        return TicketTierView.from(tier);
+    }
+
+    @Transactional
     EventView submit(Long eventId, String username) {
         TicketEvent event = requireOwned(eventId, username);
         event.requireEditable();
-        List<Performance> eventPerformances = performances.findByEvent_IdOrderByStartsAtAsc(eventId);
+        List<Performance> eventPerformances = performances.findByEvent_IdAndStatusOrderByStartsAtAsc(
+                eventId, PerformanceStatus.SCHEDULED);
         if (eventPerformances.isEmpty()) {
             throw new ApiException(HttpStatus.CONFLICT, "至少需要配置一个场次");
         }
-        boolean missingTier = eventPerformances.stream().anyMatch(item -> !tiers.existsByPerformance_Id(item.getId()));
+        boolean missingTier = eventPerformances.stream()
+                .anyMatch(item -> !tiers.existsByPerformance_IdAndEnabledTrue(item.getId()));
         if (missingTier) {
             throw new ApiException(HttpStatus.CONFLICT, "每个场次至少需要配置一个票档");
         }
@@ -136,9 +184,10 @@ class EventService {
     }
 
     @Transactional(readOnly = true)
-    List<EventSummary> listPublic() {
-        // ponytail: 作品集初期数据量可控；接入真实运营数据后再加分页和搜索。
-        return events.findByStatusInOrderByUpdatedAtDesc(PUBLIC_STATUSES).stream().map(EventSummary::from).toList();
+    PageResult<EventSummary> listPublic(String keyword, EventCategory category, int page, int size) {
+        Page<TicketEvent> result = events.searchPublic(PUBLIC_STATUSES, cleanSearch(keyword), category,
+                PageRequest.of(page, size));
+        return PageResult.of(result.stream().map(EventSummary::from).toList(), page, size, result.getTotalElements());
     }
 
     @Transactional(readOnly = true)
@@ -152,7 +201,7 @@ class EventService {
         if (!PUBLIC_STATUSES.contains(event.getStatus())) {
             throw new ApiException(HttpStatus.NOT_FOUND, "活动不存在");
         }
-        EventView result = view(event);
+        EventView result = publicView(event);
         if (cache != null) cache.put(result);
         return result;
     }
@@ -175,6 +224,11 @@ class EventService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "活动不存在"));
     }
 
+    private Performance requirePerformance(Long performanceId) {
+        return performances.findById(performanceId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "场次不存在"));
+    }
+
     private void evict(Long eventId) {
         RedisEventCache cache = eventCaches.getIfAvailable();
         if (cache != null) cache.evict(eventId);
@@ -184,10 +238,21 @@ class EventService {
         return view(event, performances.findByEvent_IdOrderByStartsAtAsc(event.getId()));
     }
 
+    private EventView publicView(TicketEvent event) {
+        List<Performance> visible = performances.findByEvent_IdAndStatusOrderByStartsAtAsc(
+                event.getId(), PerformanceStatus.SCHEDULED);
+        return view(event, visible, true);
+    }
+
     private EventView view(TicketEvent event, List<Performance> eventPerformances) {
+        return view(event, eventPerformances, false);
+    }
+
+    private EventView view(TicketEvent event, List<Performance> eventPerformances, boolean enabledTiersOnly) {
         List<Long> performanceIds = eventPerformances.stream().map(Performance::getId).toList();
         Map<Long, List<TicketTierView>> tiersByPerformance = performanceIds.isEmpty() ? Map.of()
                 : tiers.findByPerformance_IdInOrderByPriceAsc(performanceIds).stream()
+                        .filter(tier -> !enabledTiersOnly || tier.isEnabled())
                         .collect(Collectors.groupingBy(TicketTier::getPerformanceId,
                                 Collectors.mapping(TicketTierView::from, Collectors.toList())));
         List<PerformanceView> performanceViews = eventPerformances.stream()
@@ -227,5 +292,9 @@ class EventService {
 
     private static String emptyToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String cleanSearch(String value) {
+        return value == null ? "" : value.trim();
     }
 }

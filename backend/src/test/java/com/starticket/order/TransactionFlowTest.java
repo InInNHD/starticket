@@ -102,6 +102,29 @@ class TransactionFlowTest {
         mvc.perform(post("/api/check-in/redeem").header("Authorization", bearer(checker))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"" + code2 + "\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result").value("REFUNDED"));
+
+        mvc.perform(get("/api/organizer/events/{eventId}/sales-summary", eventId)
+                        .header("Authorization", bearer(organizer)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalOrders").value(2))
+                .andExpect(jsonPath("$.paidOrders").value(1))
+                .andExpect(jsonPath("$.refundedOrders").value(1))
+                .andExpect(jsonPath("$.soldTickets").value(1))
+                .andExpect(jsonPath("$.refundedTickets").value(1))
+                .andExpect(jsonPath("$.grossRevenue").value(398.0))
+                .andExpect(jsonPath("$.refundAmount").value(199.0))
+                .andExpect(jsonPath("$.netRevenue").value(199.0));
+        mvc.perform(get("/api/organizer/events/{eventId}/orders", eventId)
+                        .header("Authorization", bearer(organizer)).param("status", "REFUNDED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].username").value("flow_buyer2"));
+        mvc.perform(get("/api/admin/orders").header("Authorization", bearer(admin))
+                        .param("keyword", "flow_buyer2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/admin/orders").header("Authorization", bearer(buyer)))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/orders").header("Authorization", bearer(buyer2)).param("status", "REFUNDED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].orderNo").value(orderNo2));
     }
 
     private String createOrder(String token, String key, String body) throws Exception {

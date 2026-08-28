@@ -1,5 +1,6 @@
 package com.starticket.event;
 
+import com.starticket.common.ApiException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -13,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import org.springframework.http.HttpStatus;
 
 @Entity
 @Table(name = "st_performance")
@@ -63,6 +65,22 @@ class Performance {
         performance.status = PerformanceStatus.SCHEDULED;
         performance.createdAt = Instant.now();
         return performance;
+    }
+
+    void update(Long venueId, String name, Instant startsAt, Instant salesStartAt, Instant salesEndAt) {
+        if (status != PerformanceStatus.SCHEDULED) {
+            throw new ApiException(HttpStatus.CONFLICT, "已停用场次不能修改");
+        }
+        this.venueId = venueId;
+        this.name = name;
+        this.startsAt = startsAt;
+        this.salesStartAt = salesStartAt;
+        this.salesEndAt = salesEndAt;
+    }
+
+    void cancel() {
+        if (status == PerformanceStatus.CANCELLED) return;
+        status = PerformanceStatus.CANCELLED;
     }
 
     Long getId() { return id; }

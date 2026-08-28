@@ -7,6 +7,7 @@ import java.util.List;
 
 interface TicketTierRepository extends JpaRepository<TicketTier, Long> {
     boolean existsByPerformance_Id(Long performanceId);
+    boolean existsByPerformance_IdAndEnabledTrue(Long performanceId);
     boolean existsByPerformance_IdAndAreaId(Long performanceId, Long areaId);
     List<TicketTier> findByPerformance_IdInOrderByPriceAsc(Collection<Long> performanceIds);
 }

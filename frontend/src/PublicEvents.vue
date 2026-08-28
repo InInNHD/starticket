@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import QrcodeVue from 'qrcode.vue'
 import { api, errorMessage } from './api'
@@ -14,6 +14,7 @@ type Seat = { seatId: number; seatCode: string; price: number; status: string }
 type SeatMap = { performanceId: number; performanceName: string; seats: Seat[] }
 type Order = { orderNo: string; totalAmount: number; status: string; expiresAt: string; items: { seatCode: string }[] }
 type Ticket = { ticketNo: string; code: string; status: string; performanceName: string; startsAt: string; seatCode: string; tierName: string }
+type PageResult<T> = { content: T[]; page: number; size: number; totalElements: number; totalPages: number }
 
 const labels: Record<string, string> = {
   APPROVED: '已通过', ON_SALE: '售票中', PENDING_PAYMENT: '待支付', PAID: '已支付',
@@ -27,13 +28,12 @@ const selectedSeats = ref<number[]>([])
 const orders = ref<Order[]>([])
 const tickets = ref<Ticket[]>([])
 const keyword = ref('')
+const category = ref('')
+const orderStatus = ref('')
+const eventPage = reactive({ page: 0, size: 9, total: 0 })
+const orderPage = reactive({ page: 0, size: 10, total: 0 })
 const now = ref(Date.now())
 const timer = window.setInterval(() => { now.value = Date.now() }, 1000)
-const filteredEvents = computed(() => {
-  const value = keyword.value.trim().toLowerCase()
-  return value ? events.value.filter(item => item.title.toLowerCase().includes(value)
-    || item.category.toLowerCase().includes(value)) : events.value
-})
 
 function label(status: string) { return labels[status] ?? status }
 function remaining(expiresAt: string) {
@@ -41,18 +41,40 @@ function remaining(expiresAt: string) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+async function loadEvents() {
+  const { data } = await api.get<PageResult<EventSummary>>('/api/events', {
+    params: { keyword: keyword.value, category: category.value || undefined, page: eventPage.page, size: eventPage.size },
+  })
+  events.value = data.content
+  eventPage.total = data.totalElements
+}
+
+async function loadOrders() {
+  if (!props.authenticated) return
+  const { data } = await api.get<PageResult<Order>>('/api/orders', {
+    params: { status: orderStatus.value || undefined, page: orderPage.page, size: orderPage.size },
+  })
+  orders.value = data.content
+  orderPage.total = data.totalElements
+}
+
 async function load() {
   try {
-    events.value = (await api.get<EventSummary[]>('/api/events')).data
+    await loadEvents()
     if (props.authenticated) {
-      const [orderResponse, ticketResponse] = await Promise.all([
-        api.get<Order[]>('/api/orders'), api.get<Ticket[]>('/api/tickets'),
+      const [, ticketResponse] = await Promise.all([
+        loadOrders(), api.get<Ticket[]>('/api/tickets'),
       ])
-      orders.value = orderResponse.data
       tickets.value = ticketResponse.data
     }
   } catch (error) { ElMessage.error(errorMessage(error)) }
 }
+
+function searchEvents() { eventPage.page = 0; loadEvents().catch(error => ElMessage.error(errorMessage(error))) }
+function changeEventPage(value: number) { eventPage.page = value - 1; searchEventsPage() }
+function searchEventsPage() { loadEvents().catch(error => ElMessage.error(errorMessage(error))) }
+function searchOrders() { orderPage.page = 0; loadOrders().catch(error => ElMessage.error(errorMessage(error))) }
+function changeOrderPage(value: number) { orderPage.page = value - 1; loadOrders().catch(error => ElMessage.error(errorMessage(error))) }
 
 async function open(eventId: number) {
   try { detail.value = (await api.get<EventDetail>(`/api/events/${eventId}`)).data }
@@ -115,19 +137,38 @@ onUnmounted(() => window.clearInterval(timer))
       <section class="admin-panel">
         <div class="panel-heading">
           <div><span class="eyebrow">CITY EVENTS</span><h2>已上线活动</h2></div>
-          <el-input v-model="keyword" clearable placeholder="搜索活动名称或类别" class="event-search" />
+          <div class="search-row">
+            <el-input v-model="keyword" clearable placeholder="搜索活动名称" class="event-search"
+                      @keyup.enter="searchEvents" @clear="searchEvents" />
+            <el-select v-model="category" clearable placeholder="全部类别" @change="searchEvents">
+              <el-option label="演唱会" value="CONCERT" /><el-option label="话剧" value="THEATRE" />
+              <el-option label="展览" value="EXHIBITION" /><el-option label="喜剧" value="COMEDY" />
+              <el-option label="校园活动" value="CAMPUS" /><el-option label="其他" value="OTHER" />
+            </el-select>
+            <el-button type="primary" @click="searchEvents">搜索</el-button>
+          </div>
         </div>
         <el-row :gutter="18">
-          <el-col v-for="item in filteredEvents" :key="item.id" :xs="24" :sm="12" :md="8">
+          <el-col v-for="item in events" :key="item.id" :xs="24" :sm="12" :md="8">
             <el-card shadow="hover" class="event-card" @click="open(item.id)">
               <span class="eyebrow">{{ item.category }}</span><h3>{{ item.title }}</h3><el-tag type="success">{{ label(item.status) }}</el-tag>
             </el-card>
           </el-col>
         </el-row>
-        <el-empty v-if="!filteredEvents.length" description="没有匹配的已上线活动" />
+        <el-empty v-if="!events.length" description="没有匹配的已上线活动" />
+        <el-pagination v-if="eventPage.total > eventPage.size" background layout="prev, pager, next"
+                       :current-page="eventPage.page + 1" :page-size="eventPage.size" :total="eventPage.total"
+                       @current-change="changeEventPage" />
       </section>
     </el-tab-pane>
     <el-tab-pane v-if="authenticated" label="我的订单">
+      <div class="search-row order-filter">
+        <el-select v-model="orderStatus" clearable placeholder="全部状态" @change="searchOrders">
+          <el-option label="待支付" value="PENDING_PAYMENT" /><el-option label="已支付" value="PAID" />
+          <el-option label="已取消" value="CANCELLED" /><el-option label="已超时" value="EXPIRED" />
+          <el-option label="已退款" value="REFUNDED" />
+        </el-select>
+      </div>
       <el-table :data="orders" empty-text="还没有订单">
         <el-table-column prop="orderNo" label="订单号" /><el-table-column prop="totalAmount" label="金额" width="100" />
         <el-table-column label="状态" width="170"><template #default="scope">
@@ -140,6 +181,9 @@ onUnmounted(() => window.clearInterval(timer))
           <el-button v-if="scope.row.status === 'PAID'" text type="warning" @click="refund(scope.row)">退款</el-button>
         </template></el-table-column>
       </el-table>
+      <el-pagination v-if="orderPage.total > orderPage.size" background layout="prev, pager, next"
+                     :current-page="orderPage.page + 1" :page-size="orderPage.size" :total="orderPage.total"
+                     @current-change="changeOrderPage" />
     </el-tab-pane>
     <el-tab-pane v-if="authenticated" label="我的电子票">
       <el-card v-for="ticket in tickets" :key="ticket.ticketNo" shadow="never" class="ticket-card">

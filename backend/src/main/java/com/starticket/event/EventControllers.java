@@ -1,6 +1,9 @@
 package com.starticket.event;
 
+import com.starticket.common.PageResult;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -9,13 +12,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/organizer")
+@Validated
 class OrganizerEventController {
 
     private final EventService eventService;
@@ -31,8 +37,12 @@ class OrganizerEventController {
     }
 
     @GetMapping("/events")
-    List<EventSummary> list(Authentication authentication) {
-        return eventService.listOwned(authentication.getName());
+    PageResult<EventSummary> list(Authentication authentication,
+                                  @RequestParam(defaultValue = "") String keyword,
+                                  @RequestParam(required = false) EventStatus status,
+                                  @RequestParam(defaultValue = "0") @Min(0) int page,
+                                  @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size) {
+        return eventService.listOwned(authentication.getName(), keyword, status, page, size);
     }
 
     @GetMapping("/events/{eventId}")
@@ -53,11 +63,28 @@ class OrganizerEventController {
         return eventService.addPerformance(eventId, authentication.getName(), request);
     }
 
+    @PutMapping("/performances/{performanceId}")
+    PerformanceView updatePerformance(@PathVariable Long performanceId, Authentication authentication,
+                                      @Valid @RequestBody CreatePerformanceRequest request) {
+        return eventService.updatePerformance(performanceId, authentication.getName(), request);
+    }
+
+    @PostMapping("/performances/{performanceId}/cancel")
+    PerformanceView cancelPerformance(@PathVariable Long performanceId, Authentication authentication) {
+        return eventService.cancelPerformance(performanceId, authentication.getName());
+    }
+
     @PostMapping("/performances/{performanceId}/tiers")
     @ResponseStatus(HttpStatus.CREATED)
     TicketTierView addTicketTier(@PathVariable Long performanceId, Authentication authentication,
                                  @Valid @RequestBody CreateTicketTierRequest request) {
         return eventService.addTicketTier(performanceId, authentication.getName(), request);
+    }
+
+    @PutMapping("/tiers/{tierId}")
+    TicketTierView updateTicketTier(@PathVariable Long tierId, Authentication authentication,
+                                    @Valid @RequestBody UpdateTicketTierRequest request) {
+        return eventService.updateTicketTier(tierId, authentication.getName(), request);
     }
 
     @PostMapping("/events/{eventId}/submit")
@@ -99,6 +126,7 @@ class AdminEventController {
 
 @RestController
 @RequestMapping("/api/events")
+@Validated
 class PublicEventController {
 
     private final EventService eventService;
@@ -108,8 +136,11 @@ class PublicEventController {
     }
 
     @GetMapping
-    List<EventSummary> list() {
-        return eventService.listPublic();
+    PageResult<EventSummary> list(@RequestParam(defaultValue = "") String keyword,
+                                  @RequestParam(required = false) EventCategory category,
+                                  @RequestParam(defaultValue = "0") @Min(0) int page,
+                                  @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size) {
+        return eventService.listPublic(keyword, category, page, size);
     }
 
     @GetMapping("/{eventId}")

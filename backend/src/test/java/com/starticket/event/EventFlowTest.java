@@ -15,6 +15,7 @@ import java.time.temporal.ChronoUnit;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -66,10 +67,31 @@ class EventFlowTest {
                 "/api/organizer/events/" + eventId + "/performances", organizerToken, performanceBody);
         long performanceId = idOf(createdPerformance);
 
-        postJson("/api/organizer/performances/" + performanceId + "/tiers", organizerToken,
+        long tierId = idOf(postJson("/api/organizer/performances/" + performanceId + "/tiers", organizerToken,
                 """
                 {"areaId":%d,"name":"A区 680元","price":680.00,"color":"#6B3BFF","purchaseLimit":4}
-                """.formatted(areaId));
+                """.formatted(areaId)));
+
+        putJson("/api/organizer/performances/" + performanceId, organizerToken, """
+                {"venueId":%d,"name":"上海站 黄金场","startsAt":"%s","salesStartAt":"%s","salesEndAt":"%s"}
+                """.formatted(venueId, startsAt, startsAt.minus(20, ChronoUnit.DAYS),
+                startsAt.minus(1, ChronoUnit.HOURS)));
+        putJson("/api/organizer/tiers/" + tierId, organizerToken,
+                """
+                {"name":"A区 699元","price":699.00,"color":"#6B3BFF","purchaseLimit":4,"enabled":false}
+                """);
+        mockMvc.perform(post("/api/organizer/events/{eventId}/submit", eventId)
+                        .header("Authorization", bearer(organizerToken)))
+                .andExpect(status().isConflict());
+        putJson("/api/organizer/tiers/" + tierId, organizerToken,
+                """
+                {"name":"A区 699元","price":699.00,"color":"#6B3BFF","purchaseLimit":4,"enabled":true}
+                """);
+
+        mockMvc.perform(get("/api/organizer/events").header("Authorization", bearer(organizerToken))
+                        .param("keyword", "星河").param("page", "0").param("size", "5"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(eventId));
 
         mockMvc.perform(post("/api/organizer/events/{eventId}/submit", eventId)
                         .header("Authorization", bearer(organizerToken)))
@@ -89,8 +111,12 @@ class EventFlowTest {
         mockMvc.perform(get("/api/events/{eventId}", eventId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("2026 星河巡演"))
-                .andExpect(jsonPath("$.performances[0].ticketTiers[0].price").value(680.0))
+                .andExpect(jsonPath("$.performances[0].name").value("上海站 黄金场"))
+                .andExpect(jsonPath("$.performances[0].ticketTiers[0].price").value(699.0))
                 .andExpect(jsonPath("$.performances[0].ticketTiers[0].purchaseLimit").value(4));
+        mockMvc.perform(get("/api/events").param("keyword", "星河").param("category", "CONCERT"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(eventId));
     }
 
     private String postJson(String path, String token, String body) throws Exception {
@@ -99,6 +125,15 @@ class EventFlowTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().is2xxSuccessful())
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    private String putJson(String path, String token, String body) throws Exception {
+        return mockMvc.perform(put(path)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
     }
 

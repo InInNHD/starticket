@@ -7,6 +7,7 @@ import OrganizerEvents from './OrganizerEvents.vue'
 import PublicEvents from './PublicEvents.vue'
 import CheckerPanel from './CheckerPanel.vue'
 import AdminOperations from './AdminOperations.vue'
+import AdminOrders from './AdminOrders.vue'
 import { api, errorMessage } from './api'
 
 type User = {
@@ -146,6 +147,7 @@ onMounted(async () => {
         <el-tabs type="card">
           <el-tab-pane label="场馆资源"><AdminVenues /></el-tab-pane>
           <el-tab-pane label="活动审核"><AdminEvents /></el-tab-pane>
+          <el-tab-pane label="平台订单"><AdminOrders /></el-tab-pane>
           <el-tab-pane label="消息异常"><AdminOperations /></el-tab-pane>
         </el-tabs>
       </el-tab-pane>
