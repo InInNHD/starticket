@@ -1,0 +1,104 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      STARTICKET_DB_URL: jdbc:mysql://mysql:3306/starticket?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      STARTICKET_DB_USER: ${MYSQL_USER:-starticket}
+      STARTICKET_DB_PASSWORD: ${MYSQL_PASSWORD:-starticket_dev}
+      STARTICKET_REDIS_HOST: redis
+      STARTICKET_RABBIT_HOST: rabbitmq
+      STARTICKET_CORS_ORIGIN: ${STARTICKET_CORS_ORIGIN:-http://localhost:8081}
+      STARTICKET_DEMO_ENABLED: ${STARTICKET_DEMO_ENABLED:-true}
+      STARTICKET_INFRA_ENABLED: ${STARTICKET_INFRA_ENABLED:-true}
+      STARTICKET_ORDER_RATE_LIMIT_MAX: ${STARTICKET_ORDER_RATE_LIMIT_MAX:-10}
+      RABBITMQ_USER: ${RABBITMQ_USER:-starticket}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-starticket_dev}
+      STARTICKET_JWT_SECRET: ${STARTICKET_JWT_SECRET:-local-docker-jwt-secret-change-me-32b}
+    ports:
+      - "${STARTICKET_BACKEND_PORT:-18080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-starticket}
+      MYSQL_USER: ${MYSQL_USER:-starticket}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-starticket_dev}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_dev}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-starticket}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-starticket_dev}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "13000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  mysql-data:
+  rabbitmq-data:
+  grafana-data:

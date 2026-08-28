@@ -1,0 +1,69 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "type": "timeseries", "title": "下单吞吐与失败", "id": 1,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(starticket_order_created_total[1m]))", "legendFormat": "创建成功/s" },
+        { "expr": "sum(rate(starticket_order_failed_total[1m]))", "legendFormat": "创建失败/s" },
+        { "expr": "100 * sum(rate(starticket_order_created_total[5m])) / clamp_min(sum(rate(starticket_order_created_total[5m])) + sum(rate(starticket_order_failed_total[5m])), 0.000001)", "legendFormat": "成功率%" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "下单平均耗时", "id": 2,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "rate(starticket_order_duration_seconds_sum[1m]) / rate(starticket_order_duration_seconds_count[1m])", "legendFormat": "平均秒数" }
+      ]
+    },
+    {
+      "type": "stat", "title": "Outbox 待发布", "id": 3,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 8 },
+      "targets": [{ "expr": "starticket_outbox_pending", "legendFormat": "PENDING" }]
+    },
+    {
+      "type": "stat", "title": "Outbox 死亡", "id": 4,
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        { "expr": "starticket_outbox_dead", "legendFormat": "DEAD" },
+        { "expr": "starticket_outbox_retrying", "legendFormat": "RETRYING" }
+      ]
+    },
+    {
+      "type": "stat", "title": "RabbitMQ 关单积压", "id": 5,
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "starticket_rabbit_close_queue", "legendFormat": "关单队列" },
+        { "expr": "starticket_rabbit_failed_queue", "legendFormat": "失败队列" }
+      ]
+    },
+    {
+      "type": "stat", "title": "数据库活跃连接", "id": 6,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 8 },
+      "targets": [{ "expr": "hikaricp_connections_active", "legendFormat": "连接" }]
+    },
+    {
+      "type": "timeseries", "title": "支付回调结果", "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [{ "expr": "sum by (result) (rate(starticket_payment_callback_total[5m]))", "legendFormat": "{{result}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Redis 锁座失败与降级", "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "expr": "sum(rate(starticket_redis_seat_lock_failed_total[1m]))", "legendFormat": "锁座失败/s" },
+        { "expr": "sum(rate(starticket_redis_degraded_total[1m]))", "legendFormat": "降级/s" }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["starticket"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "title": "StarTicket 交易监控",
+  "uid": "starticket-overview",
+  "version": 1
+}

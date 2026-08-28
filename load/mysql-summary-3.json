@@ -1,0 +1,2 @@
+{"iterations":100,"throughput":98.91,"avgMs":878.40,"p95Ms":940.38,"p99Ms":952.66,
+ "technicalErrorRate":0.0000,"statuses":"{201=1, 409=99}"}

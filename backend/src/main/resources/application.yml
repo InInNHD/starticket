@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: starticket
+  datasource:
+    url: ${STARTICKET_DB_URL:jdbc:mysql://localhost:3306/starticket?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${STARTICKET_DB_USER:starticket}
+    password: ${STARTICKET_DB_PASSWORD:starticket_dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${STARTICKET_REDIS_HOST:localhost}
+      port: ${STARTICKET_REDIS_PORT:6379}
+      repositories:
+        enabled: false
+  rabbitmq:
+    host: ${STARTICKET_RABBIT_HOST:localhost}
+    port: ${STARTICKET_RABBIT_PORT:5672}
+    username: ${RABBITMQ_USER:starticket}
+    password: ${RABBITMQ_PASSWORD:starticket_dev}
+    publisher-confirm-type: correlated
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
+
+app:
+  demo:
+    enabled: ${STARTICKET_DEMO_ENABLED:false}
+  infrastructure:
+    enabled: ${STARTICKET_INFRA_ENABLED:true}
+  order:
+    rate-limit:
+      max: ${STARTICKET_ORDER_RATE_LIMIT_MAX:10}
+      window: ${STARTICKET_ORDER_RATE_LIMIT_WINDOW:PT10S}
+  jwt:
+    secret: ${STARTICKET_JWT_SECRET:}
+    ttl: PT2H
+  cors:
+    allowed-origin: ${STARTICKET_CORS_ORIGIN:http://localhost:5173}
+  payment:
+    callback-secret: ${STARTICKET_PAYMENT_SECRET:local-payment-callback-secret-32b}
+  ticket:
+    secret: ${STARTICKET_TICKET_SECRET:local-ticket-secret-change-me-32b}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+server:
+  error:
+    include-message: never
