@@ -91,10 +91,16 @@ class OrganizerEventController {
     EventView submit(@PathVariable Long eventId, Authentication authentication) {
         return eventService.submit(eventId, authentication.getName());
     }
+
+    @PostMapping("/events/{eventId}/cancel")
+    EventView cancel(@PathVariable Long eventId, Authentication authentication) {
+        return eventService.cancel(eventId, authentication.getName());
+    }
 }
 
 @RestController
 @RequestMapping("/api/admin/events")
+@Validated
 class AdminEventController {
 
     private final EventService eventService;
@@ -108,19 +114,34 @@ class AdminEventController {
         return eventService.listPending();
     }
 
+    @GetMapping
+    PageResult<EventSummary> list(@RequestParam(defaultValue = "") String keyword,
+                                  @RequestParam(required = false) EventStatus status,
+                                  @RequestParam(defaultValue = "0") @Min(0) int page,
+                                  @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size) {
+        return eventService.listAdmin(keyword, status, page, size);
+    }
+
     @GetMapping("/{eventId}")
     EventView get(@PathVariable Long eventId) {
         return eventService.getForReview(eventId);
     }
 
     @PostMapping("/{eventId}/approve")
-    EventView approve(@PathVariable Long eventId) {
-        return eventService.approve(eventId);
+    EventView approve(@PathVariable Long eventId, Authentication authentication) {
+        return eventService.approve(eventId, authentication.getName());
     }
 
     @PostMapping("/{eventId}/reject")
-    EventView reject(@PathVariable Long eventId, @Valid @RequestBody RejectEventRequest request) {
-        return eventService.reject(eventId, request.note());
+    EventView reject(@PathVariable Long eventId, @Valid @RequestBody RejectEventRequest request,
+                     Authentication authentication) {
+        return eventService.reject(eventId, request.note(), authentication.getName());
+    }
+
+    @PostMapping("/{eventId}/off-shelf")
+    EventView offShelf(@PathVariable Long eventId, @Valid @RequestBody OffShelfEventRequest request,
+                       Authentication authentication) {
+        return eventService.offShelf(eventId, request.note(), authentication.getName());
     }
 }
 

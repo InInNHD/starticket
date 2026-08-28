@@ -15,6 +15,7 @@ enum EventStatus {
     APPROVED,
     ON_SALE,
     REJECTED,
+    CANCELLED,
     OFF_SHELF,
     ENDED
 }

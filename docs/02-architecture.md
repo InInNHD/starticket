@@ -157,11 +157,13 @@ Redis 锁值必须包含随机 token，释放时通过 Lua 校验 token，避免
 业务事务与 RabbitMQ 不能使用同一个本地事务，因此采用 Outbox：
 
 1. 创建或更新业务数据时，在同一 MySQL 事务写入 `outbox_event`。
-2. 后台发布器按批读取未发布事件并发送到 RabbitMQ。
+2. 后台发布器通过 `FOR UPDATE SKIP LOCKED` 原子抢占未发布事件，多实例不会同时处理同一行；抢占超时会自动恢复。
 3. Broker 确认后将事件标记为已发布。
 4. 发布失败保留记录并指数退避重试。
 5. 关单消费者使用订单状态条件更新，重复消息不会重复释放库存。
 6. 超过重试次数的消息进入死信队列，由管理员查看和重放。
+
+数据库 Outbox 发布失败与 RabbitMQ 消费失败分别处理：前者保存在 `st_outbox_event`，后者从 Broker 死信队列采集到 `st_failed_message`。两类失败均支持管理端重试，并写入 `st_audit_log`。
 
 Outbox 当前用于订单创建后的延迟关单事件，不把普通查询做成消息流。
 
@@ -205,14 +207,17 @@ POST   /api/organizer/performances/{performanceId}/cancel
 POST   /api/organizer/performances/{performanceId}/tiers
 PUT    /api/organizer/tiers/{tierId}
 POST   /api/organizer/events/{eventId}/submit
+POST   /api/organizer/events/{eventId}/cancel
 GET    /api/organizer/events/{eventId}/sales-summary
 GET    /api/organizer/events/{eventId}/orders
 GET    /api/organizer/venues
 GET    /api/organizer/venues/{venueId}/layout
 GET    /api/admin/events/pending
+GET    /api/admin/events
 GET    /api/admin/events/{eventId}
 POST   /api/admin/events/{eventId}/approve
 POST   /api/admin/events/{eventId}/reject
+POST   /api/admin/events/{eventId}/off-shelf
 POST   /api/admin/venues
 GET    /api/admin/venues
 POST   /api/admin/venues/{venueId}/areas
@@ -220,6 +225,9 @@ POST   /api/admin/areas/{areaId}/seats/generate
 GET    /api/admin/venues/{venueId}/layout
 GET    /api/admin/outbox/dead
 POST   /api/admin/outbox/{id}/retry
+GET    /api/admin/messages/dead
+POST   /api/admin/messages/dead/{id}/retry
+GET    /api/admin/audits
 GET    /api/admin/orders
 ```
 
@@ -241,5 +249,6 @@ POST   /api/check-in/redeem
 8. [完成] 指标、集成测试、Docker、Swagger、CI 和 k6 脚本。
 9. [完成] 执行 MySQL 与 Redis 两组真实压测并记录防超卖断言。
 10. [完成] 增加服务端分页搜索、运营销售看板、平台订单查询和配置编辑。
+11. [完成] 完善活动生命周期、Outbox 多实例抢占、消费死信重放和关键操作审计。
 
 每一步都必须保持应用可运行，不先创建空的微服务或“以后可能使用”的抽象层。

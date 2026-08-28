@@ -29,6 +29,7 @@
 - 填写活动海报 URL、介绍和购票须知
 - 选择场馆、创建场次、配置票档与价格
 - 在草稿或驳回状态编辑、停用场次和票档
+- 取消尚未开售的活动
 - 提交活动审核
 - 查看活动订单、票档售出率、退款和净收入
 
@@ -38,6 +39,8 @@
 
 - 审核或驳回活动
 - 按订单号、用户、活动和状态查询全平台订单
+- 下架违规活动，查看并重放发布失败与消费死信
+- 查询活动审核、取消、下架和消息重放审计记录
 - 管理场馆、区域和座位模板
 - 查看并重放失败 Outbox 消息
 
@@ -67,6 +70,9 @@
 ```text
 DRAFT → PENDING_REVIEW → APPROVED
                  └──────→ REJECTED
+ DRAFT / REJECTED / PENDING_REVIEW / 未开售 APPROVED → CANCELLED
+ APPROVED / ON_SALE → OFF_SHELF
+ APPROVED / ON_SALE → ENDED（全部有效场次结束后自动转换）
 ```
 
 ### 3.2 选座和下单

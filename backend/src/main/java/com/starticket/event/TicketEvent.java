@@ -91,6 +91,31 @@ class TicketEvent {
         updatedAt = Instant.now();
     }
 
+    void cancel() {
+        if (status != EventStatus.DRAFT && status != EventStatus.REJECTED
+                && status != EventStatus.PENDING_REVIEW && status != EventStatus.APPROVED) {
+            throw new ApiException(HttpStatus.CONFLICT, "当前活动状态不允许取消");
+        }
+        status = EventStatus.CANCELLED;
+        reviewNote = null;
+        updatedAt = Instant.now();
+    }
+
+    void offShelf(String note) {
+        if (status != EventStatus.APPROVED && status != EventStatus.ON_SALE) {
+            throw new ApiException(HttpStatus.CONFLICT, "只有公开活动可以下架");
+        }
+        status = EventStatus.OFF_SHELF;
+        reviewNote = note;
+        updatedAt = Instant.now();
+    }
+
+    void end() {
+        if (status != EventStatus.APPROVED && status != EventStatus.ON_SALE) return;
+        status = EventStatus.ENDED;
+        updatedAt = Instant.now();
+    }
+
     void requireEditable() {
         if (status != EventStatus.DRAFT && status != EventStatus.REJECTED) {
             throw new ApiException(HttpStatus.CONFLICT, "当前活动状态不允许修改");

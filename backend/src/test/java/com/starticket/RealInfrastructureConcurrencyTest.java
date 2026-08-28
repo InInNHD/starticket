@@ -2,6 +2,9 @@ package com.starticket;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.starticket.infrastructure.OutboxClaimService;
+import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -71,6 +74,8 @@ class RealInfrastructureConcurrencyTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate jdbc;
+    @Autowired OutboxClaimService outboxClaims;
+    @Autowired RabbitTemplate rabbit;
 
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
     private String admin;
@@ -207,6 +212,71 @@ class RealInfrastructureConcurrencyTest {
             Thread.sleep(1000);
         }
         assertThat(status).isEqualTo("PUBLISHED");
+    }
+
+    @Test
+    @Order(7)
+    void twoPublishersClaimOneOutboxEventAndRecoverStaleClaim() throws Exception {
+        String aggregateId = "claim-test-" + SEQUENCE.incrementAndGet();
+        Instant now = Instant.now();
+        jdbc.update("""
+                INSERT INTO st_outbox_event
+                    (event_type, aggregate_id, payload, status, retry_count, next_retry_at, created_at)
+                VALUES ('CLAIM_TEST', ?, ?, 'PENDING', 0, ?, ?)
+                """, aggregateId, aggregateId, now.plus(1, ChronoUnit.HOURS), now);
+        long id = jdbc.queryForObject("SELECT id FROM st_outbox_event WHERE aggregate_id = ?", Long.class, aggregateId);
+        Instant claimTime = now.plus(2, ChronoUnit.HOURS);
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<List<OutboxClaimService.OutboxMessage>> first = executor.submit(() -> {
+                start.await();
+                return outboxClaims.claim("publisher-a", claimTime, 20);
+            });
+            Future<List<OutboxClaimService.OutboxMessage>> second = executor.submit(() -> {
+                start.await();
+                return outboxClaims.claim("publisher-b", claimTime, 20);
+            });
+            start.countDown();
+            long claimed = Stream.concat(first.get().stream(), second.get().stream())
+                    .filter(row -> row.id() == id).count();
+            assertThat(claimed).isEqualTo(1);
+        }
+        assertThat(jdbc.queryForObject("SELECT status FROM st_outbox_event WHERE id = ?", String.class, id))
+                .isEqualTo("PROCESSING");
+
+        jdbc.update("UPDATE st_outbox_event SET locked_at = ? WHERE id = ?", now.minus(5, ChronoUnit.MINUTES), id);
+        List<OutboxClaimService.OutboxMessage> recovered = outboxClaims.claim(
+                "publisher-recovery", claimTime.plus(2, ChronoUnit.MINUTES), 20);
+        assertThat(recovered).anyMatch(row -> row.id() == id);
+    }
+
+    @Test
+    @Order(8)
+    void rabbitConsumerDeadLetterCanBeInspectedAndReplayed() throws Exception {
+        String aggregateId = "dead-message-" + SEQUENCE.incrementAndGet();
+        rabbit.send("starticket.order.failed.exchange", "failed",
+                MessageBuilder.withBody(aggregateId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        .setContentType("text/plain").setMessageId(aggregateId)
+                        .setHeader("eventType", "ORDER_EXPIRY").setHeader("aggregateId", aggregateId).build());
+        Long deadId = null;
+        for (int i = 0; i < 30; i++) {
+            List<Long> ids = jdbc.query("SELECT id FROM st_failed_message WHERE aggregate_id = ?",
+                    (rs, row) -> rs.getLong(1), aggregateId);
+            if (!ids.isEmpty()) {
+                deadId = ids.getFirst();
+                break;
+            }
+            Thread.sleep(200);
+        }
+        assertThat(deadId).isNotNull();
+        perform(get("/api/admin/messages/dead").header("Authorization", bearer(admin)));
+        assertThat(perform(post("/api/admin/messages/dead/{id}/retry", deadId)
+                .header("Authorization", bearer(admin))).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT status FROM st_failed_message WHERE id = ?", String.class, deadId))
+                .isEqualTo("REPLAYED");
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM st_audit_log WHERE action = 'RABBIT_DEAD_REPLAY' AND target_id = ?
+                """, Integer.class, String.valueOf(deadId))).isEqualTo(1);
     }
 
     private void waitForRabbitMq() throws Exception {

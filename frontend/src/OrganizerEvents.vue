@@ -32,7 +32,7 @@ const categoryOptions = [
   ['CONCERT', '演唱会'], ['THEATRE', '话剧'], ['EXHIBITION', '展览'],
   ['COMEDY', '喜剧'], ['CAMPUS', '校园活动'], ['OTHER', '其他'],
 ]
-const statusOptions = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'ON_SALE', 'REJECTED', 'OFF_SHELF', 'ENDED']
+const statusOptions = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'ON_SALE', 'REJECTED', 'CANCELLED', 'OFF_SHELF', 'ENDED']
 const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'CANCELLED', 'EXPIRED', 'REFUNDING', 'REFUNDED']
 const events = ref<EventSummary[]>([])
 const venues = ref<Venue[]>([])
@@ -210,6 +210,18 @@ async function submitReview() {
   } catch (error) { ElMessage.error(errorMessage(error)) }
 }
 
+async function cancelEvent() {
+  if (!current.value) return
+  try {
+    await ElMessageBox.confirm(`确定取消活动“${current.value.title}”吗？取消后不能恢复。`, '取消活动', { type: 'warning' })
+    current.value = (await api.post<EventDetail>(`/api/organizer/events/${current.value.id}/cancel`)).data
+    await loadEvents()
+    ElMessage.success('活动已取消')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(errorMessage(error))
+  }
+}
+
 onMounted(async () => {
   try {
     const [, venueResponse] = await Promise.all([loadEvents(), api.get<Venue[]>('/api/organizer/venues')])
@@ -263,6 +275,9 @@ onMounted(async () => {
 
     <template v-if="current">
       <el-alert :title="`当前活动：${current.title}（${current.status}）`" type="info" :closable="false" />
+      <div v-if="['DRAFT', 'REJECTED', 'PENDING_REVIEW', 'APPROVED'].includes(current.status)" class="lifecycle-actions">
+        <el-button type="danger" plain @click="cancelEvent">取消活动</el-button>
+      </div>
 
       <el-card v-if="['DRAFT', 'REJECTED'].includes(current.status)" shadow="never">
         <h3>{{ performance.id ? '编辑场次' : '添加演出场次' }}</h3>

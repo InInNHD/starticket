@@ -4,13 +4,16 @@ import com.starticket.account.AccountLookup;
 import com.starticket.common.ApiException;
 import com.starticket.common.PageResult;
 import com.starticket.inventory.InventoryInitializer;
+import com.starticket.infrastructure.AuditLogService;
 import com.starticket.venue.VenueService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
 import java.util.List;
@@ -30,10 +33,11 @@ class EventService {
     private final VenueService venues;
     private final InventoryInitializer inventory;
     private final ObjectProvider<RedisEventCache> eventCaches;
+    private final AuditLogService audits;
 
     EventService(TicketEventRepository events, PerformanceRepository performances, TicketTierRepository tiers,
                  AccountLookup accounts, VenueService venues, InventoryInitializer inventory,
-                 ObjectProvider<RedisEventCache> eventCaches) {
+                 ObjectProvider<RedisEventCache> eventCaches, AuditLogService audits) {
         this.events = events;
         this.performances = performances;
         this.tiers = tiers;
@@ -41,6 +45,7 @@ class EventService {
         this.venues = venues;
         this.inventory = inventory;
         this.eventCaches = eventCaches;
+        this.audits = audits;
     }
 
     @Transactional
@@ -162,25 +167,67 @@ class EventService {
     }
 
     @Transactional(readOnly = true)
+    PageResult<EventSummary> listAdmin(String keyword, EventStatus status, int page, int size) {
+        Page<TicketEvent> result = events.searchAll(cleanSearch(keyword), status, PageRequest.of(page, size));
+        return PageResult.of(result.stream().map(EventSummary::from).toList(), page, size, result.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
     EventView getForReview(Long eventId) {
         return view(requireEvent(eventId));
     }
 
     @Transactional
-    EventView approve(Long eventId) {
+    EventView approve(Long eventId, String actor) {
         TicketEvent event = requireEvent(eventId);
         event.approve();
         inventory.initializeEvent(eventId);
+        audits.record(actor, "EVENT_APPROVE", "EVENT", eventId, event.getTitle());
         evict(eventId);
         return view(event);
     }
 
     @Transactional
-    EventView reject(Long eventId, String note) {
+    EventView reject(Long eventId, String note, String actor) {
         TicketEvent event = requireEvent(eventId);
         event.reject(clean(note));
+        audits.record(actor, "EVENT_REJECT", "EVENT", eventId, note);
         evict(eventId);
         return view(event);
+    }
+
+    @Transactional
+    EventView cancel(Long eventId, String username) {
+        TicketEvent event = requireOwned(eventId, username);
+        if (event.getStatus() == EventStatus.APPROVED
+                && performances.existsByEvent_IdAndStatusAndSalesStartAtLessThanEqual(
+                eventId, PerformanceStatus.SCHEDULED, Instant.now())) {
+            throw new ApiException(HttpStatus.CONFLICT, "已经开售的活动不能由主办方取消，请联系管理员下架");
+        }
+        event.cancel();
+        audits.record(username, "EVENT_CANCEL", "EVENT", eventId, event.getTitle());
+        evict(eventId);
+        return view(event);
+    }
+
+    @Transactional
+    EventView offShelf(Long eventId, String note, String actor) {
+        TicketEvent event = requireEvent(eventId);
+        event.offShelf(clean(note));
+        audits.record(actor, "EVENT_OFF_SHELF", "EVENT", eventId, note);
+        evict(eventId);
+        return view(event);
+    }
+
+    @Transactional
+    int finishEndedEvents(Instant now) {
+        List<TicketEvent> ended = events.findEndedCandidates(PUBLIC_STATUSES, now);
+        ended.forEach(event -> {
+            event.end();
+            audits.record("system", "EVENT_AUTO_END", "EVENT", event.getId(), event.getTitle());
+            evict(event.getId());
+        });
+        return ended.size();
     }
 
     @Transactional(readOnly = true)
@@ -296,5 +343,20 @@ class EventService {
 
     private static String cleanSearch(String value) {
         return value == null ? "" : value.trim();
+    }
+}
+
+@Component
+class EventLifecycleScheduler {
+
+    private final EventService events;
+
+    EventLifecycleScheduler(EventService events) {
+        this.events = events;
+    }
+
+    @Scheduled(fixedDelay = 60000, initialDelay = 60000)
+    void finishEndedEvents() {
+        events.finishEndedEvents(Instant.now());
     }
 }

@@ -52,6 +52,9 @@ record UpdateTicketTierRequest(
 record RejectEventRequest(@NotBlank @Size(max = 500) String note) {
 }
 
+record OffShelfEventRequest(@NotBlank @Size(max = 500) String note) {
+}
+
 record EventSummary(
         Long id,
         Long organizerId,

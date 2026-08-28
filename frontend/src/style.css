@@ -236,6 +236,11 @@ input {
   margin-top: 20px;
 }
 
+.lifecycle-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .review-performance {
   margin: 14px 0;
 }

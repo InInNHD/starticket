@@ -33,6 +33,9 @@ class EventFlowTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private EventService eventService;
+
     @Test
     void organizerBuildsEventAndAdminPublishesIt() throws Exception {
         String adminToken = registerAndGrant("event_admin", "event-admin@example.com", "ADMIN");
@@ -117,6 +120,47 @@ class EventFlowTest {
         mockMvc.perform(get("/api/events").param("keyword", "星河").param("category", "CONCERT"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].id").value(eventId));
+
+        mockMvc.perform(get("/api/admin/events").header("Authorization", bearer(adminToken))
+                        .param("status", "APPROVED").param("page", "0").param("size", "5"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+
+        long cancelledId = idOf(postJson("/api/organizer/events", organizerToken, eventDraft()
+                .replace("2026 星河巡演", "待取消活动")));
+        mockMvc.perform(post("/api/organizer/events/{eventId}/cancel", cancelledId)
+                        .header("Authorization", bearer(organizerToken)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        mockMvc.perform(post("/api/admin/events/{eventId}/off-shelf", eventId)
+                        .header("Authorization", bearer(adminToken)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"违规内容下架\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("OFF_SHELF"));
+        mockMvc.perform(get("/api/events/{eventId}", eventId)).andExpect(status().isNotFound());
+
+        long organizerId = jdbcTemplate.queryForObject(
+                "SELECT id FROM st_user WHERE username = 'event_organizer'", Long.class);
+        Instant now = Instant.now();
+        jdbcTemplate.update("""
+                INSERT INTO st_event
+                    (organizer_id, title, category, description, purchase_notice, status, created_at, updated_at)
+                VALUES (?, '已结束演出', 'CONCERT', '自动结束测试', '测试须知', 'APPROVED', ?, ?)
+                """, organizerId, now, now);
+        long endedEventId = jdbcTemplate.queryForObject("SELECT id FROM st_event WHERE title = '已结束演出'", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO st_performance
+                    (event_id, venue_id, name, starts_at, sales_start_at, sales_end_at, status, created_at)
+                VALUES (?, ?, '历史场次', ?, ?, ?, 'SCHEDULED', ?)
+                """, endedEventId, venueId, now.minus(1, ChronoUnit.DAYS), now.minus(10, ChronoUnit.DAYS),
+                now.minus(2, ChronoUnit.DAYS), now);
+        mockMvc.perform(post("/api/organizer/events/{eventId}/cancel", endedEventId)
+                        .header("Authorization", bearer(organizerToken)))
+                .andExpect(status().isConflict());
+        org.assertj.core.api.Assertions.assertThat(eventService.finishEndedEvents(now)).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM st_event WHERE id = ?", String.class, endedEventId)).isEqualTo("ENDED");
+
+        mockMvc.perform(get("/api/admin/audits").header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(4));
     }
 
     private String postJson(String path, String token, String body) throws Exception {
