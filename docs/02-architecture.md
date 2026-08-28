@@ -175,6 +175,14 @@ Outbox 当前用于订单创建后的延迟关单事件，不把普通查询做�
 
 ## 9. API 边界
 
+每个 HTTP 请求接受或生成 `X-Request-Id`。业务异常、参数错误以及 Security 产生的 401/403
+统一返回 RFC 9457 Problem Details，并包含相同 `requestId`。请求完成日志通过 MDC 自动携带
+`requestId`、认证用户和 URL 中的订单号、支付单号或活动编号，便于从前端错误直接定位服务端日志。
+
+Swagger 定义全局 JWT Bearer 安全方案，可在 Swagger UI 使用 `Authorize` 调试受保护接口。
+Prometheus 采集业务指标以及 Spring MVC、JVM 和 HikariCP 指标，Grafana 对 HTTP 错误率、
+资源使用和死信数量提供预置面板。
+
 ### 用户端
 
 ```text
@@ -250,5 +258,6 @@ POST   /api/check-in/redeem
 9. [完成] 执行 MySQL 与 Redis 两组真实压测并记录防超卖断言。
 10. [完成] 增加服务端分页搜索、运营销售看板、平台订单查询和配置编辑。
 11. [完成] 完善活动生命周期、Outbox 多实例抢占、消费死信重放和关键操作审计。
+12. [完成] 补齐权限、签名和状态竞争测试，增加 requestId 追踪、Swagger JWT 与运行监控面板。
 
 每一步都必须保持应用可运行，不先创建空的微服务或“以后可能使用”的抽象层。

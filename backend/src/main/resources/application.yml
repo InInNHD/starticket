@@ -67,3 +67,7 @@ management:
 server:
   error:
     include-message: never
+
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId:-},user:%X{user:-},businessNo:%X{businessNo:-}]"

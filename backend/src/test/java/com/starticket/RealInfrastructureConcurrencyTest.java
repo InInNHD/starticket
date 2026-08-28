@@ -3,6 +3,7 @@ package com.starticket;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.starticket.infrastructure.OutboxClaimService;
+import com.starticket.order.OrderService;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.junit.jupiter.api.BeforeAll;
@@ -76,6 +77,7 @@ class RealInfrastructureConcurrencyTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired OutboxClaimService outboxClaims;
     @Autowired RabbitTemplate rabbit;
+    @Autowired OrderService orders;
 
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
     private String admin;
@@ -277,6 +279,95 @@ class RealInfrastructureConcurrencyTest {
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM st_audit_log WHERE action = 'RABBIT_DEAD_REPLAY' AND target_id = ?
                 """, Integer.class, String.valueOf(deadId))).isEqualTo(1);
+    }
+
+    @Test
+    @Order(9)
+    void paymentCallbackAndTimeoutCloseCannotProduceMixedState() throws Exception {
+        Fixture fixture = fixture(1, 6);
+        String buyer = account("timeout_buyer", "timeout-buyer@example.com", null);
+        String orderNo = json.readTree(perform(orderRequest(buyer, "timeout-order",
+                orderBody(fixture, fixture.seats()))).body()).get("orderNo").asText();
+        String paymentNo = json.readTree(postJson("/api/payments", buyer,
+                "{\"orderNo\":\"" + orderNo + "\"}")).get("paymentNo").asText();
+        jdbc.update("UPDATE st_order SET expires_at = ? WHERE order_no = ?", Instant.now(), orderNo);
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<HttpResult> payment = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return perform(post("/api/payments/{paymentNo}/simulate-success", paymentNo)
+                        .header("Authorization", bearer(buyer)));
+            });
+            Future<Boolean> timeout = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return orders.expire(orderNo);
+            });
+            ready.await();
+            start.countDown();
+            assertThat(payment.get().status()).isIn(200, 409);
+            timeout.get();
+        }
+
+        String orderStatus = jdbc.queryForObject("SELECT status FROM st_order WHERE order_no = ?", String.class, orderNo);
+        String seatStatus = jdbc.queryForObject("""
+                SELECT ps.status FROM st_performance_seat ps JOIN st_order_item i ON i.performance_seat_id = ps.id
+                JOIN st_order o ON o.id = i.order_id WHERE o.order_no = ?
+                """, String.class, orderNo);
+        int ticketCount = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM st_ticket t JOIN st_order_item i ON i.id = t.order_item_id
+                JOIN st_order o ON o.id = i.order_id WHERE o.order_no = ?
+                """, Integer.class, orderNo);
+        if ("PAID".equals(orderStatus)) {
+            assertThat(seatStatus).isEqualTo("SOLD");
+            assertThat(ticketCount).isEqualTo(1);
+        } else {
+            assertThat(orderStatus).isEqualTo("EXPIRED");
+            assertThat(seatStatus).isEqualTo("AVAILABLE");
+            assertThat(ticketCount).isZero();
+        }
+    }
+
+    @Test
+    @Order(10)
+    void refundAndCheckInRaceEndsInOneConsistentOutcome() throws Exception {
+        Fixture fixture = fixture(1, 6);
+        String buyer = account("refund_redeem_buyer", "refund-redeem-buyer@example.com", null);
+        String orderNo = json.readTree(perform(orderRequest(buyer, "refund-redeem-order",
+                orderBody(fixture, fixture.seats()))).body()).get("orderNo").asText();
+        String paymentNo = json.readTree(postJson("/api/payments", buyer,
+                "{\"orderNo\":\"" + orderNo + "\"}")).get("paymentNo").asText();
+        postJson("/api/payments/" + paymentNo + "/simulate-success", buyer, null);
+        String code = json.readTree(perform(get("/api/tickets").header("Authorization", bearer(buyer))).body())
+                .get(0).get("code").asText();
+
+        List<HttpResult> results = concurrent(2, index -> index == 0
+                ? post("/api/orders/{orderNo}/refunds", orderNo).header("Authorization", bearer(buyer))
+                : post("/api/check-in/redeem").header("Authorization", bearer(checker))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"" + code + "\"}"));
+        assertThat(results.get(0).status()).isIn(200, 409);
+        assertThat(results.get(1).status()).isEqualTo(200);
+
+        String orderStatus = jdbc.queryForObject("SELECT status FROM st_order WHERE order_no = ?", String.class, orderNo);
+        String ticketStatus = jdbc.queryForObject("""
+                SELECT t.status FROM st_ticket t JOIN st_order_item i ON i.id = t.order_item_id
+                JOIN st_order o ON o.id = i.order_id WHERE o.order_no = ?
+                """, String.class, orderNo);
+        String seatStatus = jdbc.queryForObject("""
+                SELECT ps.status FROM st_performance_seat ps JOIN st_order_item i ON i.performance_seat_id = ps.id
+                JOIN st_order o ON o.id = i.order_id WHERE o.order_no = ?
+                """, String.class, orderNo);
+        if ("REFUNDED".equals(orderStatus)) {
+            assertThat(ticketStatus).isEqualTo("REFUNDED");
+            assertThat(seatStatus).isEqualTo("AVAILABLE");
+        } else {
+            assertThat(orderStatus).isEqualTo("PAID");
+            assertThat(ticketStatus).isEqualTo("USED");
+            assertThat(seatStatus).isEqualTo("SOLD");
+        }
     }
 
     private void waitForRabbitMq() throws Exception {

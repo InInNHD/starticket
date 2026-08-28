@@ -56,6 +56,53 @@
         { "expr": "sum(rate(starticket_redis_seat_lock_failed_total[1m]))", "legendFormat": "锁座失败/s" },
         { "expr": "sum(rate(starticket_redis_degraded_total[1m]))", "legendFormat": "降级/s" }
       ]
+    },
+    {
+      "type": "timeseries", "title": "HTTP 错误率", "id": 9,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.000001)", "legendFormat": "4xx" },
+        { "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.000001)", "legendFormat": "5xx" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "JVM 与进程资源", "id": 10,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        { "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) / clamp_min(sum(jvm_memory_max_bytes{area=\"heap\"}), 1)", "legendFormat": "堆内存使用率" },
+        { "expr": "process_cpu_usage", "legendFormat": "进程 CPU 使用率" },
+        { "expr": "rate(jvm_gc_pause_seconds_sum[5m])", "legendFormat": "GC 暂停秒数/s" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Hikari 连接池", "id": 11,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 29 },
+      "targets": [
+        { "expr": "hikaricp_connections_active", "legendFormat": "活跃" },
+        { "expr": "hikaricp_connections_idle", "legendFormat": "空闲" },
+        { "expr": "hikaricp_connections_pending", "legendFormat": "等待" },
+        { "expr": "hikaricp_connections_max", "legendFormat": "上限" }
+      ]
+    },
+    {
+      "type": "stat", "title": "死信告警（大于 0 需处理）", "id": 12,
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 29 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 1 }
+          ] },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "starticket_outbox_dead", "legendFormat": "Outbox DEAD" },
+        { "expr": "starticket_rabbit_dead_persisted", "legendFormat": "消费死信" },
+        { "expr": "starticket_rabbit_failed_queue", "legendFormat": "Broker 失败队列" }
+      ]
     }
   ],
   "refresh": "5s",
@@ -65,5 +112,5 @@
   "time": { "from": "now-30m", "to": "now" },
   "title": "StarTicket 交易监控",
   "uid": "starticket-overview",
-  "version": 1
+  "version": 2
 }

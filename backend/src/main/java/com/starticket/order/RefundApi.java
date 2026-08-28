@@ -59,11 +59,11 @@ class RefundService {
         if (!"PAID".equals(order.status()) || !order.startsAt().isAfter(Instant.now().plus(24, ChronoUnit.HOURS))) {
             throw new ApiException(HttpStatus.CONFLICT, "仅支持演出开始24小时前的已支付订单退款");
         }
-        Integer usedTickets = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM st_ticket t JOIN st_order_item i ON i.id = t.order_item_id
-                WHERE i.order_id = ? AND t.status = 'USED'
-                """, Integer.class, order.id());
-        if (usedTickets != null && usedTickets > 0) {
+        List<String> ticketStatuses = jdbc.query("""
+                SELECT t.status FROM st_ticket t JOIN st_order_item i ON i.id = t.order_item_id
+                WHERE i.order_id = ? FOR UPDATE
+                """, (rs, row) -> rs.getString(1), order.id());
+        if (ticketStatuses.stream().anyMatch("USED"::equals)) {
             throw new ApiException(HttpStatus.CONFLICT, "订单包含已核销电子票，不能退款");
         }
         Instant now = Instant.now();
