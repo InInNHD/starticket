@@ -27,10 +27,11 @@ try {
     docker info | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Docker 未运行" }
     docker compose stop | Out-Host
-    docker compose -f $composeFile down | Out-Host
+    # 该 Compose 只承载可重建的压测数据；删除专用卷可避免旧凭据和旧库存污染新一轮。
+    docker compose -f $composeFile down -v | Out-Host
     docker compose -f $composeFile up -d mysql redis rabbitmq | Out-Host
     for ($attempt = 1; $attempt -le 90; $attempt++) {
-        docker compose -f $composeFile exec -T mysql mysqladmin ping -h localhost -uroot -proot_dev --silent 2>$null | Out-Null
+        docker compose -f $composeFile exec -T mysql mysql -N -B -uroot -proot_dev -e "SELECT 1" 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { break }
         if ($attempt -eq 90) { throw "MySQL 健康检查超时" }
         Start-Sleep -Seconds 1
