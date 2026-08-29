@@ -1,4 +1,5 @@
-{"recordedAt":"2026-08-29T16:01:39.393956Z","mode":"EVENT_DETAILS","concurrency":500,"warmupSeconds":10,"warmupRequests":6327,
- "durationSeconds":30.455,"requests":37608,"throughput":1234.88,"avgMs":401.59,"p95Ms":762.85,"p99Ms":1057.45,
- "technicalErrorRate":0.0000,"statuses":{"200":37608}}
+{"recordedAt":"2026-08-29T17:05:00.800748700Z","mode":"EVENT_DETAILS","concurrency":500,"warmupSeconds":10,"warmupRequests":4117,
+ "durationSeconds":31.114,"requests":15205,"throughput":488.68,"avgMs":1006.47,"p95Ms":1593.51,"p99Ms":1992.93,
+ "successCount":0,"conflictCount":0,"rateLimitedCount":0,"serverErrorCount":0,"transportErrorCount":0,
+ "successThroughput":0.00,"conflictThroughput":0.00,"technicalErrorRate":0.0000,"statuses":{"200":15205}}
 

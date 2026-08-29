@@ -1,50 +1,53 @@
 # 压测说明
 
-Java 21 标准库版（无需安装 k6）：
-
-```powershell
-java load/OrderRace.java http://localhost:18080 "用逗号分隔的JWT" 1 1 100 load/summary.json
-```
-
-参数依次为 API 地址、JWT 列表、场次 ID、座位 ID、并发请求数和结果文件。
-
-完整的预热 + 持续压测矩阵（PowerShell 7、Docker Desktop、JDK 21）：
+库存正式测试使用 Java 21 标准库负载客户端和隔离的 Docker Compose 环境，不需要安装 k6：
 
 ```powershell
 ./load/Prepare-Sustained.ps1
 ./load/Run-Sustained.ps1
 ```
 
-脚本会重建隔离数据库 `starticket_perf`，准备 600 个用户、5000 个座位和 36 个独立场次，然后分别以 MySQL 条件更新和 Redis Lua 预锁两种方案执行：
-
-- `20 / 100 / 300` 并发；
-- `HOTSPOT`（竞争同一座位）与 `SPREAD`（轮询不同座位）；
-- 每组预热 10 秒、持续 30 秒、执行 3 轮；
-- 同步采集进程 CPU、JVM 堆、HikariCP 活跃连接和 Redis 命令量；
-- 最后自动执行 SQL 防超卖断言，并恢复默认 demo 服务。
-
-原始结果与中位数汇总写入 `load/results/`，临时 JWT 仅存放在被 Git 忽略的 `load/.runtime/`。可用参数缩短本地冒烟测试：
+`Prepare-Sustained.ps1` 会停止默认 demo，删除并重建仅属于 `starticket-perf` 的压测卷，创建 300 个预热专用用户、1000 个正式专用用户、5000 个座位、18 个预热场次和 18 个正式场次。`Run-Sustained.ps1` 完成后会自动清理压测环境并恢复 `http://localhost:8081`；中途终止时可执行：
 
 ```powershell
-./load/Run-Sustained.ps1 -WarmupSeconds 2 -DurationSeconds 5
+./load/Restore-Demo.ps1
 ```
 
-活动详情（Java 21 标准库，500 并发、10 秒预热、30 秒正式测试）：
+## 固定环境
+
+[`compose.perf.yml`](compose.perf.yml) 将服务端限制为 4 vCPU / 8 GB 预算：容器 CPU 上限合计 4 vCPU，内存上限合计 7 GB，另预留 1 GB Docker 开销。后端固定 `-Xms512m -Xmx1g`，HikariCP 最大连接数为 10。负载发生器运行在容器外。
+
+实际容器限制、Git 提交号、JVM 参数、数据规模和命令写入 [`results/performance-environment.json`](results/performance-environment.json)。
+
+## 库存口径
+
+每个正式请求使用未参与预热的独立用户，每个正式轮次固定 300 并发和 1000 次请求，预热与正式测试使用不同用户池和不同场次：
+
+- `SINGLE`：1000 个请求竞争 1 个座位，验证冲突快速失败；
+- `LIMITED`：1000 个请求竞争 100 个座位，验证限量交易能力；
+- `SPREAD`：1000 个请求购买 1000 个不同座位，验证正常业务吞吐。
+
+MySQL-only 与 Redis Lua + MySQL 各执行 3 轮。结果分别记录总吞吐、成功吞吐、冲突吞吐、P95、P99、`201/409/429/5xx`、最终售出、重复座位、超卖和资源指标。聚合结果见 [`results/benchmark-summary.json`](results/benchmark-summary.json)，全局断言见 [`results/benchmark-consistency-assertion.txt`](results/benchmark-consistency-assertion.txt)。
+
+单独运行固定库存客户端的格式为：
 
 ```powershell
-java load/OrderRace.java --event-details http://localhost:18080 1 500 10 30 load/results/event-details-c500-r1.json
+java load/OrderRace.java --inventory BASE_URL `
+  '@load/.runtime/tokens.txt' PERFORMANCE_ID '@load/.runtime/seats-100.txt' `
+  300 1000 LIMITED load/results/manual.json
 ```
 
-也可以使用 k6：
+## 活动详情
+
+```powershell
+java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load/results/event-details-c500-r1.json
+```
+
+也保留了 k6 脚本用于临时接口检查：
 
 ```bash
 k6 run -e BASE_URL=http://localhost:18080 -e EVENT_ID=1 load/event-details.js
+k6 run -e BASE_URL=http://localhost:18080 -e TOKEN=用户JWT -e PERFORMANCE_ID=1 -e SEAT_IDS=1,2,3 load/order-race.js
 ```
 
-固定库存竞争下单：
-
-```bash
-k6 run -e BASE_URL=http://localhost:18080 -e TOKEN=用户JWT -e PERFORMANCE_ID=1 -e SEAT_IDS=1,2,3,4,5 load/order-race.js
-```
-
-分别以 `STARTICKET_INFRA_ENABLED=false/true` 启动后执行相同脚本。压测后执行 `load/assert-no-oversell.sql`，结果必须为 `PASS`。业务冲突 409 是预期结果，技术错误率只统计 201/409/429 之外的响应。
+`409` 是库存冲突，不是成功下单。简历和报告必须引用 `successThroughput` 描述成功交易能力，并同时给出状态码数量和最终库存断言。

@@ -159,16 +159,15 @@ docker compose logs backend --tail 100
 
 ## 压测结论
 
-测试使用 600 个用户、5000 个座位和 36 个独立场次，覆盖 20 / 100 / 300 并发、热点/分散座位、每组 10 秒预热 + 30 秒持续负载 + 3 轮。所有 36 轮技术错误率均为 0，SQL 防超卖断言为 `PASS`。另以 500 并发完成 3 轮热门活动详情测试，共 96049 次正式请求全部返回 200，三轮中位吞吐为 1023.49 req/s。
+测试使用专用 Compose 将服务端固定在 4 vCPU / 8 GB 预算内，准备 300 个预热专用用户、1000 个正式专用用户、5000 个座位以及互不复用的预热/正式场次。两种方案在 300 并发下对 1、100、1000 个座位各执行 3 轮，每轮固定 1000 次请求。18 轮的 `429`、`5xx`、传输错误、重复座位和超卖均为 0，SQL 全局断言为 `PASS`。
 
-| 场景 | 并发 | MySQL 吞吐 / P95 | Redis + MySQL 吞吐 / P95 | 结论 |
+| 场景 | MySQL 成功 / 冲突吞吐 | Redis + MySQL 成功 / 冲突吞吐 | `201 / 409` | 结论 |
 |---|---:|---:|---:|---|
-| 热点座位 | 20 | 612.15 req/s / 51.25 ms | 724.91 req/s / 46.83 ms | Redis 吞吐 +18.4% |
-| 热点座位 | 100 | 537.13 req/s / 318.94 ms | 720.23 req/s / 265.78 ms | Redis 吞吐 +34.1% |
-| 热点座位 | 300 | 571.32 req/s / 786.32 ms | 810.01 req/s / 665.97 ms | Redis 吞吐 +41.8% |
-| 分散座位 | 100 | 1092.50 req/s / 203.34 ms | 729.33 req/s / 285.72 ms | MySQL-only 更合适 |
+| 1 个座位 | 0.15 / 150.53 req/s | 0.14 / 139.62 req/s | 1 / 999 | 总吞吐几乎全是冲突拒绝，不能代表成功交易能力 |
+| 100 个座位 | 21.38 / 192.38 req/s | 19.39 / 174.50 req/s | 100 / 900 | Redis 成功吞吐约低 9.3% |
+| 1000 个分散座位 | 214.34 / 0 req/s | 193.80 / 0 req/s | 1000 / 0 | Redis 成功吞吐约低 9.6% |
 
-结论不是“用了 Redis 就更快”：Redis 对热点行竞争有效，但在分散座位场景会增加网络往返与锁补偿成本。完整环境、12 组中位数结果、资源指标和边界说明见[性能测试报告](docs/03-performance-report.md)。
+旧测试的正式场次已被预热售空，所谓“Redis 吞吐提升 41.8%”实际是更快返回 `409`，现已删除该无效结论。本轮没有证明 Redis 路径更快，因此默认采用 MySQL 条件更新，只把 Redis 预锁保留为需要重新压测验证的可选热点策略。完整环境、6 组中位数、18 轮原始结果和 SQL 断言见[性能测试报告](docs/03-performance-report.md)。
 
 ## 测试与验证
 
@@ -179,18 +178,18 @@ cd backend && mvn test
 # 前端类型检查和生产构建
 cd frontend && npm ci && npm run build
 
-# 完整持续压测（PowerShell 7）
+# 固定 4 vCPU / 8 GB、独立预热场次的完整库存压测（PowerShell 7）
 ./load/Prepare-Sustained.ps1
 ./load/Run-Sustained.ps1
 
 # 热门活动详情 500 并发验收
-java load/OrderRace.java --event-details http://localhost:18080 1 500 10 30 load/results/event-details-c500-r1.json
+java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load/results/event-details-c500-r1.json
 ```
 
 ## 可直接放入简历的项目描述
 
 - 基于 Java 21、Spring Boot、MySQL、Redis 与 RabbitMQ 实现城市演出票务闭环，覆盖活动审核、选座锁座、幂等下单、支付回调、电子票核销、取消退款及四角色权限。
-- 设计 Redis Lua 预锁 + MySQL 条件更新的双层库存方案，以数据库作为最终一致性防线；完成 20/100/300 并发、热点/分散负载共 36 轮测试，热点 300 并发吞吐较 MySQL-only 提升 41.8%，全程无技术错误且 SQL 断言无超卖。
+- 设计 Redis Lua 预锁 + MySQL 条件更新的双层库存方案，以数据库作为最终一致性防线；在固定 4 vCPU / 8 GB 环境完成 18 轮库存测试，分别统计成功/冲突吞吐与状态码，验证当前负载下 Redis 路径成功吞吐低 9%～10%，据此保留热点按需启用策略，全程无重复座位和超卖。
 - 使用事务 Outbox、延迟消息、失败重试/死信重放解决订单超时与消息可靠性，并通过 Testcontainers 覆盖并发幂等下单、支付回调、退款和单次核销，接入 Prometheus、Grafana 与 requestId 追踪提升可观测性。
 
 ## 当前进度
@@ -208,8 +207,9 @@ java load/OrderRace.java --event-details http://localhost:18080 1 500 10 30 load
 - [x] RabbitMQ 延迟关单、Outbox 重试、死信查询和定时补偿
 - [x] Testcontainers 真实 MySQL、Redis、RabbitMQ 并发一致性测试
 - [x] Prometheus 业务指标、Grafana 预置仪表盘、Swagger 和 GitHub Actions
-- [x] MySQL-only 与 Redis Lua + MySQL 三轮性能对比及 SQL 防超卖断言
-- [x] 热门活动详情 500 并发三轮验收，96049 次正式请求无服务端错误
+- [x] 固定 4 vCPU / 8 GB，独立预热/正式场次的 MySQL-only 与 Redis Lua + MySQL 三轮性能对比
+- [x] 18 轮固定库存测试分项统计 `201/409/429/5xx`，SQL 断言无重复座位和超卖
+- [x] 热门活动详情 500 并发三轮验收，36768 次正式请求无服务端错误
 - [x] 活动与订单服务端搜索分页、主办方销售看板和管理员订单查询
 - [x] 草稿场次编辑停用、票档编辑启停和运营查询索引
 - [x] 活动取消、管理员下架、演出结束后自动结束活动

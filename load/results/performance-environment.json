@@ -1,0 +1,37 @@
+{
+  "recordedAt": "2026-08-30T01:14:22.5602093+08:00",
+  "gitCommit": "a7bc931cef4db1aa9fb081422008424785036dd9",
+  "serverBudget": "4 vCPU / 8 GB; load generator runs outside the server budget",
+  "containerCaps": "4 vCPU / 7168 MB; 1 GB reserved for Docker overhead",
+  "services": [
+    {
+      "service": "backend",
+      "cpu": 2.0,
+      "memoryMb": 2048.0
+    },
+    {
+      "service": "mysql",
+      "cpu": 1.25,
+      "memoryMb": 3072.0
+    },
+    {
+      "service": "redis",
+      "cpu": 0.25,
+      "memoryMb": 512.0
+    },
+    {
+      "service": "rabbitmq",
+      "cpu": 0.5,
+      "memoryMb": 1536.0
+    }
+  ],
+  "jvm": "-Xms512m -Xmx1g -XX:+UseG1GC",
+  "hikariMaximumPoolSize": 10,
+  "loadUsers": 1300,
+  "warmupUsers": 300,
+  "formalUsers": 1000,
+  "venueSeats": 5000,
+  "formalRuns": 18,
+  "formalRequestsPerRun": 1000,
+  "command": ".\\\\load\\\\Prepare-Sustained.ps1; .\\\\load\\\\Run-Sustained.ps1"
+}
