@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-08-30T00:01:39+08:00",
+  "mode": "EVENT_DETAILS",
+  "eventId": 1,
+  "concurrency": 500,
+  "warmupSeconds": 10,
+  "durationSecondsPerRound": 30,
+  "rounds": 3,
+  "totalRequests": 96049,
+  "medianRequests": 31099,
+  "medianThroughput": 1023.49,
+  "medianAvgMs": 483.26,
+  "medianP95Ms": 1000.97,
+  "medianP99Ms": 1350.39,
+  "technicalErrorRate": 0.0,
+  "statuses": {
+    "200": 96049
+  },
+  "acceptance": "PASS"
+}

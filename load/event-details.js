@@ -13,7 +13,7 @@ export const options = {
   },
 }
 
-const baseUrl = __ENV.BASE_URL || 'http://localhost:8080'
+const baseUrl = __ENV.BASE_URL || 'http://localhost:18080'
 const eventId = __ENV.EVENT_ID
 
 export default function () {

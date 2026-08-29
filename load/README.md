@@ -3,7 +3,7 @@
 Java 21 标准库版（无需安装 k6）：
 
 ```powershell
-java load/OrderRace.java http://localhost:8080 "用逗号分隔的JWT" 1 1 100 load/summary.json
+java load/OrderRace.java http://localhost:18080 "用逗号分隔的JWT" 1 1 100 load/summary.json
 ```
 
 参数依次为 API 地址、JWT 列表、场次 ID、座位 ID、并发请求数和结果文件。
@@ -29,16 +29,22 @@ java load/OrderRace.java http://localhost:8080 "用逗号分隔的JWT" 1 1 100 l
 ./load/Run-Sustained.ps1 -WarmupSeconds 2 -DurationSeconds 5
 ```
 
-活动详情：
+活动详情（Java 21 标准库，500 并发、10 秒预热、30 秒正式测试）：
+
+```powershell
+java load/OrderRace.java --event-details http://localhost:18080 1 500 10 30 load/results/event-details-c500-r1.json
+```
+
+也可以使用 k6：
 
 ```bash
-k6 run -e EVENT_ID=1 load/event-details.js
+k6 run -e BASE_URL=http://localhost:18080 -e EVENT_ID=1 load/event-details.js
 ```
 
 固定库存竞争下单：
 
 ```bash
-k6 run -e TOKEN=用户JWT -e PERFORMANCE_ID=1 -e SEAT_IDS=1,2,3,4,5 load/order-race.js
+k6 run -e BASE_URL=http://localhost:18080 -e TOKEN=用户JWT -e PERFORMANCE_ID=1 -e SEAT_IDS=1,2,3,4,5 load/order-race.js
 ```
 
 分别以 `STARTICKET_INFRA_ENABLED=false/true` 启动后执行相同脚本。压测后执行 `load/assert-no-oversell.sql`，结果必须为 `PASS`。业务冲突 409 是预期结果，技术错误率只统计 201/409/429 之外的响应。

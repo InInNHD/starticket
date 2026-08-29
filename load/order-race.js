@@ -18,7 +18,7 @@ export const options = {
   },
 }
 
-const baseUrl = __ENV.BASE_URL || 'http://localhost:8080'
+const baseUrl = __ENV.BASE_URL || 'http://localhost:18080'
 const seatIds = (__ENV.SEAT_IDS || '').split(',').filter(Boolean).map(Number)
 
 export default function () {

@@ -16,6 +16,7 @@ jobs:
           cache: maven
       - run: mvn -B test
         working-directory: backend
+      - run: java load/OrderRace.java --self-test
       - uses: actions/setup-node@v4
         with:
           node-version: 22

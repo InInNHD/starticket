@@ -1,0 +1,4 @@
+{"recordedAt":"2026-08-29T16:01:39.393956Z","mode":"EVENT_DETAILS","concurrency":500,"warmupSeconds":10,"warmupRequests":6327,
+ "durationSeconds":30.455,"requests":37608,"throughput":1234.88,"avgMs":401.59,"p95Ms":762.85,"p99Ms":1057.45,
+ "technicalErrorRate":0.0000,"statuses":{"200":37608}}
+

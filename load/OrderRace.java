@@ -27,6 +27,10 @@ public class OrderRace {
             selfTest();
             return;
         }
+        if (args.length == 7 && "--event-details".equals(args[0])) {
+            eventDetails(args);
+            return;
+        }
         if (args.length == 6) {
             burst(args);
             return;
@@ -35,6 +39,7 @@ public class OrderRace {
             throw new IllegalArgumentException("""
                     突发模式: BASE_URL TOKENS PERFORMANCE_ID SEAT_ID ITERATIONS OUTPUT_JSON
                     持续模式: BASE_URL TOKENS PERFORMANCE_ID SEATS CONCURRENCY WARMUP_SECONDS DURATION_SECONDS HOTSPOT|SPREAD OUTPUT_JSON
+                    活动详情: --event-details BASE_URL EVENT_ID CONCURRENCY WARMUP_SECONDS DURATION_SECONDS OUTPUT_JSON
                     TOKENS 和 SEATS 支持逗号分隔或 @文件路径。持续模式至少需要 2 * CONCURRENCY 个令牌。""");
         }
         sustained(args);
@@ -68,7 +73,7 @@ public class OrderRace {
             for (Future<Void> future : futures) future.get();
         }
         double wallSeconds = (System.nanoTime() - wallStarted) / 1_000_000_000d;
-        write(output, summary("BURST", iterations, wallSeconds, durations, statuses, 0, 0));
+        write(output, summary("BURST", iterations, wallSeconds, durations, statuses, 0, 0, 201, 409, 429));
     }
 
     private static void sustained(String[] args) throws Exception {
@@ -93,7 +98,58 @@ public class OrderRace {
         double wallSeconds = (System.nanoTime() - started) / 1_000_000_000d;
         long[] durations = results.stream().mapToLong(Result::nanos).toArray();
         int[] statuses = results.stream().mapToInt(Result::status).toArray();
-        write(output, summary(mode, concurrency, wallSeconds, durations, statuses, warmupSeconds, warmupRequests));
+        write(output, summary(mode, concurrency, wallSeconds, durations, statuses,
+                warmupSeconds, warmupRequests, 201, 409, 429));
+    }
+
+    private static void eventDetails(String[] args) throws Exception {
+        String baseUrl = args[1], output = args[6];
+        long eventId = Long.parseLong(args[2]);
+        int concurrency = Integer.parseInt(args[3]);
+        int warmupSeconds = Integer.parseInt(args[4]);
+        int durationSeconds = Integer.parseInt(args[5]);
+        int warmupRequests = runEventWindow(baseUrl, eventId, concurrency, warmupSeconds).size();
+        long started = System.nanoTime();
+        List<Result> results = runEventWindow(baseUrl, eventId, concurrency, durationSeconds);
+        double wallSeconds = (System.nanoTime() - started) / 1_000_000_000d;
+        long[] durations = results.stream().mapToLong(Result::nanos).toArray();
+        int[] statuses = results.stream().mapToInt(Result::status).toArray();
+        write(output, summary("EVENT_DETAILS", concurrency, wallSeconds, durations, statuses,
+                warmupSeconds, warmupRequests, 200));
+    }
+
+    private static List<Result> runEventWindow(String baseUrl, long eventId,
+                                                int concurrency, int seconds) throws Exception {
+        ConcurrentLinkedQueue<Result> results = new ConcurrentLinkedQueue<>();
+        long deadline = System.nanoTime() + Duration.ofSeconds(seconds).toNanos();
+        CountDownLatch ready = new CountDownLatch(concurrency), start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int worker = 0; worker < concurrency; worker++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    while (System.nanoTime() < deadline) results.add(eventDetails(baseUrl, eventId));
+                    return null;
+                }));
+            }
+            ready.await();
+            start.countDown();
+            for (Future<?> future : futures) future.get();
+        }
+        return new ArrayList<>(results);
+    }
+
+    private static Result eventDetails(String baseUrl, long eventId) {
+        var request = HttpRequest.newBuilder(URI.create(baseUrl + "/api/events/" + eventId))
+                .header("Accept", "application/json").GET().timeout(Duration.ofSeconds(15)).build();
+        long began = System.nanoTime();
+        try {
+            return new Result(CLIENT.send(request, HttpResponse.BodyHandlers.discarding()).statusCode(),
+                    System.nanoTime() - began);
+        } catch (Exception exception) {
+            return new Result(0, System.nanoTime() - began);
+        }
     }
 
     private static List<Result> runWindow(String baseUrl, List<String> tokens, long performanceId,
@@ -143,13 +199,14 @@ public class OrderRace {
     }
 
     private static String summary(String mode, int concurrency, double wallSeconds, long[] durations,
-                                  int[] statuses, int warmupSeconds, int warmupRequests) {
+                                  int[] statuses, int warmupSeconds, int warmupRequests,
+                                  int... acceptedStatuses) {
         Arrays.sort(durations);
         Map<Integer, Integer> counts = new TreeMap<>();
         for (int status : statuses) counts.merge(status, 1, Integer::sum);
         long total = Arrays.stream(durations).sum();
         int technicalErrors = (int) Arrays.stream(statuses)
-                .filter(status -> status != 201 && status != 409 && status != 429).count();
+                .filter(status -> Arrays.stream(acceptedStatuses).noneMatch(accepted -> accepted == status)).count();
         int requests = durations.length;
         return """
                 {"recordedAt":"%s","mode":"%s","concurrency":%d,"warmupSeconds":%d,"warmupRequests":%d,
@@ -195,6 +252,9 @@ public class OrderRace {
         if (!"{\"201\":1,\"409\":2}".equals(statusesJson(new TreeMap<>(Map.of(201, 1, 409, 2)))))
             throw new AssertionError("statusesJson");
         if (percentile(new long[]{1_000_000, 2_000_000, 3_000_000}, 0.95) != 3) throw new AssertionError("percentile");
+        String eventSummary = summary("EVENT_DETAILS", 2, 1, new long[]{1_000_000, 2_000_000},
+                new int[]{200, 500}, 0, 0, 200);
+        if (!eventSummary.contains("\"technicalErrorRate\":0.5000")) throw new AssertionError("acceptedStatuses");
         System.out.println("OrderRace self-test passed");
     }
 

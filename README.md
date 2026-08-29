@@ -159,7 +159,7 @@ docker compose logs backend --tail 100
 
 ## 压测结论
 
-测试使用 600 个用户、5000 个座位和 36 个独立场次，覆盖 20 / 100 / 300 并发、热点/分散座位、每组 10 秒预热 + 30 秒持续负载 + 3 轮。所有 36 轮技术错误率均为 0，SQL 防超卖断言为 `PASS`。
+测试使用 600 个用户、5000 个座位和 36 个独立场次，覆盖 20 / 100 / 300 并发、热点/分散座位、每组 10 秒预热 + 30 秒持续负载 + 3 轮。所有 36 轮技术错误率均为 0，SQL 防超卖断言为 `PASS`。另以 500 并发完成 3 轮热门活动详情测试，共 96049 次正式请求全部返回 200，三轮中位吞吐为 1023.49 req/s。
 
 | 场景 | 并发 | MySQL 吞吐 / P95 | Redis + MySQL 吞吐 / P95 | 结论 |
 |---|---:|---:|---:|---|
@@ -182,6 +182,9 @@ cd frontend && npm ci && npm run build
 # 完整持续压测（PowerShell 7）
 ./load/Prepare-Sustained.ps1
 ./load/Run-Sustained.ps1
+
+# 热门活动详情 500 并发验收
+java load/OrderRace.java --event-details http://localhost:18080 1 500 10 30 load/results/event-details-c500-r1.json
 ```
 
 ## 可直接放入简历的项目描述
@@ -206,6 +209,7 @@ cd frontend && npm ci && npm run build
 - [x] Testcontainers 真实 MySQL、Redis、RabbitMQ 并发一致性测试
 - [x] Prometheus 业务指标、Grafana 预置仪表盘、Swagger 和 GitHub Actions
 - [x] MySQL-only 与 Redis Lua + MySQL 三轮性能对比及 SQL 防超卖断言
+- [x] 热门活动详情 500 并发三轮验收，96049 次正式请求无服务端错误
 - [x] 活动与订单服务端搜索分页、主办方销售看板和管理员订单查询
 - [x] 草稿场次编辑停用、票档编辑启停和运营查询索引
 - [x] 活动取消、管理员下架、演出结束后自动结束活动
