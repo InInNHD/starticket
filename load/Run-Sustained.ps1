@@ -11,8 +11,9 @@ $runtimeDir = Join-Path $PSScriptRoot ".runtime"
 $resultsDir = Join-Path $PSScriptRoot "results"
 $matrixPath = Join-Path $runtimeDir "matrix.csv"
 $tokensPath = Join-Path $runtimeDir "tokens.txt"
+$warmupTokensPath = Join-Path $runtimeDir "warmup-tokens.txt"
 $allSeatsPath = Join-Path $runtimeDir "seats.txt"
-foreach ($required in @($matrixPath, $tokensPath, $allSeatsPath)) {
+foreach ($required in @($matrixPath, $tokensPath, $warmupTokensPath, $allSeatsPath)) {
     if (-not (Test-Path $required)) { throw "缺少 $required，请先执行 load/Prepare-Sustained.ps1" }
 }
 New-Item -ItemType Directory -Force $resultsDir | Out-Null
@@ -68,6 +69,7 @@ function Get-Median([double[]]$values) {
 }
 
 function Invoke-InventoryRun(
+    [string]$runTokensPath,
     [long]$performanceId,
     [string]$seatsPath,
     [int]$requests,
@@ -75,13 +77,14 @@ function Invoke-InventoryRun(
     [string]$outputPath,
     [bool]$sampleMetrics
 ) {
-    $stdoutPath = "$outputPath.out"
-    $stderrPath = "$outputPath.err"
+    $resultName = [IO.Path]::GetFileNameWithoutExtension($outputPath)
+    $stdoutPath = Join-Path $runtimeDir "$resultName.out"
+    $stderrPath = Join-Path $runtimeDir "$resultName.err"
     $cpu = [Collections.Generic.List[double]]::new()
     $heap = [Collections.Generic.List[double]]::new()
     $connections = [Collections.Generic.List[double]]::new()
     $arguments = @(
-        "load/OrderRace.java", "--inventory", $BaseUrl, "@$tokensPath", $performanceId,
+        "load/OrderRace.java", "--inventory", $BaseUrl, "@$runTokensPath", $performanceId,
         "@$seatsPath", $Concurrency, $requests, $scenario, $outputPath
     )
     $process = Start-Process -FilePath "java" -ArgumentList $arguments -WorkingDirectory $projectRoot `
@@ -132,11 +135,11 @@ try {
         $warmupPath = Join-Path $runtimeDir "$name-warmup.json"
 
         Write-Host "[$completed/$($matrix.Count)] $($row.Scheme) $scenario：预热场次 $($row.WarmupPerformanceId)"
-        Invoke-InventoryRun ([long]$row.WarmupPerformanceId) $seatsPath $WarmupRequests $scenario $warmupPath $false | Out-Null
+        Invoke-InventoryRun $warmupTokensPath ([long]$row.WarmupPerformanceId) $seatsPath $WarmupRequests $scenario $warmupPath $false | Out-Null
 
         Write-Host "  正式场次 $($row.PerformanceId)：$requests 个固定请求，$seatCount 个座位"
         $redisBefore = Get-RedisCommands
-        $resources = Invoke-InventoryRun ([long]$row.PerformanceId) $seatsPath $requests $scenario $outputPath $true
+        $resources = Invoke-InventoryRun $tokensPath ([long]$row.PerformanceId) $seatsPath $requests $scenario $outputPath $true
         $redisAfter = Get-RedisCommands
 
         $salesSql = @"

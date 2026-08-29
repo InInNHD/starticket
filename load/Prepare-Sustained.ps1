@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = "http://localhost:18081",
-    [int]$UserCount = 1000
+    [int]$WarmupUserCount = 300,
+    [int]$FormalUserCount = 1000
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,21 +52,33 @@ FLUSH PRIVILEGES;
     docker compose -f $composeFile up -d --build --force-recreate backend | Out-Host
     Wait-Backend
 
-    Write-Host "[3/6] 写入独立预热/正式场次、$UserCount 个用户和 5000 个座位"
+    $totalUsers = $WarmupUserCount + $FormalUserCount
+    Write-Host "[3/6] 写入独立预热/正式场次、$totalUsers 个用户和 5000 个座位"
     Get-Content (Join-Path $PSScriptRoot "prepare-sustained.sql") -Raw |
         docker compose -f $composeFile exec -T mysql mysql -ustarticket -pstarticket_dev starticket_perf | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "压测数据初始化失败" }
 
-    Write-Host "[4/6] 并行登录并保存正式测试专用 JWT"
-    $tokens = 1..$UserCount | ForEach-Object -Parallel {
+    Write-Host "[4/6] 分别生成预热用户与正式用户 JWT"
+    $warmupTokens = 1..$WarmupUserCount | ForEach-Object -Parallel {
         $username = "load{0:D4}" -f $_
         $body = @{ login = $username; password = "Password123" } | ConvertTo-Json -Compress
         (Invoke-RestMethod -Method Post -Uri "$using:BaseUrl/api/auth/login" `
             -ContentType "application/json" -Body $body -TimeoutSec 20).accessToken
     } -ThrottleLimit 30
-    if ($tokens.Count -ne $UserCount -or $tokens.Where({ [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
-        throw "JWT 数量不完整：期望 $UserCount，实际 $($tokens.Count)"
+    $formalStart = $WarmupUserCount + 1
+    $formalEnd = $WarmupUserCount + $FormalUserCount
+    $tokens = $formalStart..$formalEnd | ForEach-Object -Parallel {
+        $username = "load{0:D4}" -f $_
+        $body = @{ login = $username; password = "Password123" } | ConvertTo-Json -Compress
+        (Invoke-RestMethod -Method Post -Uri "$using:BaseUrl/api/auth/login" `
+            -ContentType "application/json" -Body $body -TimeoutSec 20).accessToken
+    } -ThrottleLimit 30
+    if ($warmupTokens.Count -ne $WarmupUserCount -or $tokens.Count -ne $FormalUserCount -or
+        $warmupTokens.Where({ [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -or
+        $tokens.Where({ [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+        throw "JWT 数量不完整：预热 $($warmupTokens.Count)/$WarmupUserCount，正式 $($tokens.Count)/$FormalUserCount"
     }
+    $warmupTokens | Set-Content (Join-Path $runtimeDir "warmup-tokens.txt") -Encoding utf8NoBOM
     $tokens | Set-Content (Join-Path $runtimeDir "tokens.txt") -Encoding utf8NoBOM
 
     Write-Host "[5/6] 导出座位及 18 组正式压测矩阵"
@@ -115,14 +128,16 @@ ORDER BY FIELD(formal.scheme, 'MYSQL', 'REDIS'), FIELD(formal.scenario, 'SINGLE'
         services = $limits
         jvm = "-Xms512m -Xmx1g -XX:+UseG1GC"
         hikariMaximumPoolSize = 10
-        loadUsers = $UserCount
+        loadUsers = $totalUsers
+        warmupUsers = $WarmupUserCount
+        formalUsers = $FormalUserCount
         venueSeats = $seatIds.Count
         formalRuns = 18
         formalRequestsPerRun = 1000
         command = ".\\load\\Prepare-Sustained.ps1; .\\load\\Run-Sustained.ps1"
     } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $resultsDir "performance-environment.json") -Encoding utf8NoBOM
 
-    Write-Host "准备完成：$($tokens.Count) 个令牌、$($seatIds.Count) 个座位、$($matrix.Count) 组正式测试。"
+    Write-Host "准备完成：$($warmupTokens.Count) 个预热令牌、$($tokens.Count) 个正式令牌、$($seatIds.Count) 个座位、$($matrix.Count) 组正式测试。"
 } catch {
     & (Join-Path $PSScriptRoot "Restore-Demo.ps1")
     throw
