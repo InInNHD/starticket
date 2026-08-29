@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-08-29T03:36:07.143779600Z",
+  "mode": "HOTSPOT",
+  "concurrency": 20,
+  "warmupSeconds": 10,
+  "warmupRequests": 2437,
+  "durationSeconds": 30.026,
+  "requests": 18911,
+  "throughput": 629.81,
+  "avgMs": 31.68,
+  "p95Ms": 60.15,
+  "p99Ms": 81.97,
+  "technicalErrorRate": 0.0,
+  "statuses": {
+    "409": 18911
+  },
+  "scheme": "REDIS",
+  "round": 1,
+  "avgProcessCpuPercent": 42.431922927737205,
+  "maxHeapMb": 168.41631317138672,
+  "maxDbConnections": 10.0,
+  "redisCommands": 128177
+}

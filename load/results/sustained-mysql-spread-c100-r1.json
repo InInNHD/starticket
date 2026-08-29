@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-08-29T03:31:24.249356900Z",
+  "mode": "SPREAD",
+  "concurrency": 100,
+  "warmupSeconds": 10,
+  "warmupRequests": 7301,
+  "durationSeconds": 30.062,
+  "requests": 32843,
+  "throughput": 1092.5,
+  "avgMs": 91.41,
+  "p95Ms": 203.34,
+  "p99Ms": 457.99,
+  "technicalErrorRate": 0.0,
+  "statuses": {
+    "201": 600,
+    "409": 32243
+  },
+  "scheme": "MYSQL",
+  "round": 1,
+  "avgProcessCpuPercent": 29.234631535423098,
+  "maxHeapMb": 214.82109832763672,
+  "maxDbConnections": 10.0,
+  "redisCommands": 0
+}

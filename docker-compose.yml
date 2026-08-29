@@ -2,7 +2,7 @@ services:
   backend:
     build: ./backend
     environment:
-      STARTICKET_DB_URL: jdbc:mysql://mysql:3306/starticket?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      STARTICKET_DB_URL: ${STARTICKET_DB_URL:-jdbc:mysql://mysql:3306/starticket?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
       STARTICKET_DB_USER: ${MYSQL_USER:-starticket}
       STARTICKET_DB_PASSWORD: ${MYSQL_PASSWORD:-starticket_dev}
       STARTICKET_REDIS_HOST: redis

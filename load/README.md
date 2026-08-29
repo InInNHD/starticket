@@ -8,6 +8,27 @@ java load/OrderRace.java http://localhost:8080 "用逗号分隔的JWT" 1 1 100 l
 
 参数依次为 API 地址、JWT 列表、场次 ID、座位 ID、并发请求数和结果文件。
 
+完整的预热 + 持续压测矩阵（PowerShell 7、Docker Desktop、JDK 21）：
+
+```powershell
+./load/Prepare-Sustained.ps1
+./load/Run-Sustained.ps1
+```
+
+脚本会重建隔离数据库 `starticket_perf`，准备 600 个用户、5000 个座位和 36 个独立场次，然后分别以 MySQL 条件更新和 Redis Lua 预锁两种方案执行：
+
+- `20 / 100 / 300` 并发；
+- `HOTSPOT`（竞争同一座位）与 `SPREAD`（轮询不同座位）；
+- 每组预热 10 秒、持续 30 秒、执行 3 轮；
+- 同步采集进程 CPU、JVM 堆、HikariCP 活跃连接和 Redis 命令量；
+- 最后自动执行 SQL 防超卖断言，并恢复默认 demo 服务。
+
+原始结果与中位数汇总写入 `load/results/`，临时 JWT 仅存放在被 Git 忽略的 `load/.runtime/`。可用参数缩短本地冒烟测试：
+
+```powershell
+./load/Run-Sustained.ps1 -WarmupSeconds 2 -DurationSeconds 5
+```
+
 活动详情：
 
 ```bash
