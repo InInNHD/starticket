@@ -1,9 +1,9 @@
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
+$composeFile = Join-Path $PSScriptRoot "compose.perf.yml"
 Set-Location $projectRoot
-Remove-Item Env:STARTICKET_DB_URL -ErrorAction SilentlyContinue
-Remove-Item Env:STARTICKET_DEMO_ENABLED -ErrorAction SilentlyContinue
-Remove-Item Env:STARTICKET_INFRA_ENABLED -ErrorAction SilentlyContinue
-Remove-Item Env:STARTICKET_ORDER_RATE_LIMIT_MAX -ErrorAction SilentlyContinue
-docker compose up -d --force-recreate backend frontend | Out-Host
-Write-Host "已恢复默认 demo 配置：http://localhost:8081"
+Remove-Item Env:PERF_DEMO_ENABLED -ErrorAction SilentlyContinue
+Remove-Item Env:PERF_INFRA_ENABLED -ErrorAction SilentlyContinue
+docker compose -f $composeFile down | Out-Host
+docker compose up -d | Out-Host
+Write-Host "已停止隔离压测环境并恢复默认 demo：http://localhost:8081"

@@ -14,7 +14,7 @@ FROM (
     CROSS JOIN (SELECT 0 n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
                 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) hundreds
 ) numbers
-WHERE n <= 600;
+WHERE n <= 1000;
 
 INSERT INTO st_user_role (user_id, role)
 SELECT id, 'USER' FROM st_user WHERE username LIKE 'load%';
@@ -54,9 +54,13 @@ INSERT INTO st_performance (event_id, venue_id, name, starts_at, sales_start_at,
 SELECT @event_id, @venue_id,
        CONCAT(
            CASE WHEN n <= 18 THEN 'MYSQL' ELSE 'REDIS' END, '-',
-           CASE WHEN MOD(n - 1, 18) < 9 THEN 'HOTSPOT' ELSE 'SPREAD' END, '-C',
-           LPAD(CASE FLOOR(MOD(n - 1, 9) / 3) WHEN 0 THEN 20 WHEN 1 THEN 100 ELSE 300 END, 3, '0'),
-           '-R', MOD(n - 1, 3) + 1),
+           CASE FLOOR(MOD(n - 1, 18) / 6)
+               WHEN 0 THEN 'SINGLE'
+               WHEN 1 THEN 'LIMITED'
+               ELSE 'SPREAD'
+           END,
+           '-R', FLOOR(MOD(n - 1, 6) / 2) + 1, '-',
+           CASE WHEN MOD(n - 1, 2) = 0 THEN 'WARMUP' ELSE 'FORMAL' END),
        DATE_ADD(CURRENT_TIMESTAMP(6), INTERVAL (30 + n) DAY),
        DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 DAY),
        DATE_ADD(CURRENT_TIMESTAMP(6), INTERVAL 29 DAY), 'SCHEDULED', CURRENT_TIMESTAMP(6)
@@ -81,6 +85,7 @@ WHERE performance.event_id = @event_id;
 
 SELECT COUNT(*) AS load_users FROM st_user WHERE username LIKE 'load%';
 SELECT COUNT(*) AS load_seats FROM st_seat WHERE area_id = @area_id;
+SELECT COUNT(*) AS load_performances FROM st_performance WHERE event_id = @event_id;
 SELECT COUNT(*) AS performance_seats
 FROM st_performance_seat performance_seat
 JOIN st_performance performance ON performance.id = performance_seat.performance_id

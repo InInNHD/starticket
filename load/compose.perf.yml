@@ -1,0 +1,76 @@
+name: starticket-perf
+
+services:
+  backend:
+    build: ../backend
+    cpus: 2.0
+    mem_limit: 2g
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms512m -Xmx1g -XX:+UseG1GC
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
+      STARTICKET_DB_URL: jdbc:mysql://mysql:3306/starticket_perf?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      STARTICKET_DB_USER: starticket
+      STARTICKET_DB_PASSWORD: starticket_dev
+      STARTICKET_REDIS_HOST: redis
+      STARTICKET_RABBIT_HOST: rabbitmq
+      STARTICKET_DEMO_ENABLED: ${PERF_DEMO_ENABLED:-false}
+      STARTICKET_INFRA_ENABLED: ${PERF_INFRA_ENABLED:-false}
+      STARTICKET_ORDER_RATE_LIMIT_MAX: 100000
+      RABBITMQ_USER: starticket
+      RABBITMQ_PASSWORD: starticket_dev
+      STARTICKET_JWT_SECRET: perf-jwt-secret-change-me-32bytes
+    ports:
+      - "18081:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    cpus: 1.25
+    mem_limit: 3g
+    environment:
+      MYSQL_DATABASE: starticket_perf
+      MYSQL_USER: starticket
+      MYSQL_PASSWORD: starticket_dev
+      MYSQL_ROOT_PASSWORD: root_dev
+    volumes:
+      - perf-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    cpus: 0.25
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    cpus: 0.5
+    mem_limit: 1.5g
+    environment:
+      RABBITMQ_DEFAULT_USER: starticket
+      RABBITMQ_DEFAULT_PASS: starticket_dev
+    volumes:
+      - perf-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  perf-mysql-data:
+  perf-rabbitmq-data:

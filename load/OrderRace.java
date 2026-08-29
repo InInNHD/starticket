@@ -31,6 +31,10 @@ public class OrderRace {
             eventDetails(args);
             return;
         }
+        if (args.length == 9 && "--inventory".equals(args[0])) {
+            inventory(args);
+            return;
+        }
         if (args.length == 6) {
             burst(args);
             return;
@@ -40,6 +44,7 @@ public class OrderRace {
                     突发模式: BASE_URL TOKENS PERFORMANCE_ID SEAT_ID ITERATIONS OUTPUT_JSON
                     持续模式: BASE_URL TOKENS PERFORMANCE_ID SEATS CONCURRENCY WARMUP_SECONDS DURATION_SECONDS HOTSPOT|SPREAD OUTPUT_JSON
                     活动详情: --event-details BASE_URL EVENT_ID CONCURRENCY WARMUP_SECONDS DURATION_SECONDS OUTPUT_JSON
+                    固定库存: --inventory BASE_URL TOKENS PERFORMANCE_ID SEATS CONCURRENCY REQUESTS SINGLE|LIMITED|SPREAD OUTPUT_JSON
                     TOKENS 和 SEATS 支持逗号分隔或 @文件路径。持续模式至少需要 2 * CONCURRENCY 个令牌。""");
         }
         sustained(args);
@@ -116,6 +121,49 @@ public class OrderRace {
         int[] statuses = results.stream().mapToInt(Result::status).toArray();
         write(output, summary("EVENT_DETAILS", concurrency, wallSeconds, durations, statuses,
                 warmupSeconds, warmupRequests, 200));
+    }
+
+    private static void inventory(String[] args) throws Exception {
+        String baseUrl = args[1], output = args[8], scenario = args[7].toUpperCase();
+        List<String> tokens = values(args[2]);
+        long performanceId = Long.parseLong(args[3]);
+        List<Long> seats = values(args[4]).stream().map(Long::parseLong).toList();
+        int concurrency = Integer.parseInt(args[5]), requests = Integer.parseInt(args[6]);
+        if (!List.of("SINGLE", "LIMITED", "SPREAD").contains(scenario)) {
+            throw new IllegalArgumentException("固定库存场景必须为 SINGLE、LIMITED 或 SPREAD");
+        }
+        if (requests < 1 || concurrency < 1) throw new IllegalArgumentException("并发数和请求数必须大于0");
+        if (tokens.size() < requests) throw new IllegalArgumentException("固定库存模式需要每个请求使用独立令牌");
+        if (seats.isEmpty()) throw new IllegalArgumentException("至少需要一个座位");
+
+        AtomicInteger cursor = new AtomicInteger();
+        Result[] results = new Result[requests];
+        int workers = Math.min(concurrency, requests);
+        CountDownLatch ready = new CountDownLatch(workers), start = new CountDownLatch(1);
+        long wallStarted;
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int worker = 0; worker < workers; worker++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    for (int index; (index = cursor.getAndIncrement()) < requests; ) {
+                        long seatId = "SINGLE".equals(scenario) ? seats.getFirst()
+                                : seats.get(index % seats.size());
+                        results[index] = order(baseUrl, tokens.get(index), performanceId, seatId, index);
+                    }
+                    return null;
+                }));
+            }
+            ready.await();
+            wallStarted = System.nanoTime();
+            start.countDown();
+            for (Future<?> future : futures) future.get();
+        }
+        double wallSeconds = (System.nanoTime() - wallStarted) / 1_000_000_000d;
+        write(output, summary(scenario, concurrency, wallSeconds,
+                Arrays.stream(results).mapToLong(Result::nanos).toArray(),
+                Arrays.stream(results).mapToInt(Result::status).toArray(), 0, 0, 201, 409, 429));
     }
 
     private static List<Result> runEventWindow(String baseUrl, long eventId,
@@ -208,13 +256,22 @@ public class OrderRace {
         int technicalErrors = (int) Arrays.stream(statuses)
                 .filter(status -> Arrays.stream(acceptedStatuses).noneMatch(accepted -> accepted == status)).count();
         int requests = durations.length;
+        int success = counts.getOrDefault(201, 0);
+        int conflicts = counts.getOrDefault(409, 0);
+        int rateLimited = counts.getOrDefault(429, 0);
+        int serverErrors = counts.entrySet().stream()
+                .filter(entry -> entry.getKey() >= 500).mapToInt(Map.Entry::getValue).sum();
+        int transportErrors = counts.getOrDefault(0, 0);
         return """
                 {"recordedAt":"%s","mode":"%s","concurrency":%d,"warmupSeconds":%d,"warmupRequests":%d,
                  "durationSeconds":%.3f,"requests":%d,"throughput":%.2f,"avgMs":%.2f,"p95Ms":%.2f,"p99Ms":%.2f,
-                 "technicalErrorRate":%.4f,"statuses":%s}
+                 "successCount":%d,"conflictCount":%d,"rateLimitedCount":%d,"serverErrorCount":%d,"transportErrorCount":%d,
+                 "successThroughput":%.2f,"conflictThroughput":%.2f,"technicalErrorRate":%.4f,"statuses":%s}
                 """.formatted(Instant.now(), mode, concurrency, warmupSeconds, warmupRequests, wallSeconds,
                 requests, requests / wallSeconds, requests == 0 ? 0 : total / 1_000_000d / requests,
                 percentile(durations, 0.95), percentile(durations, 0.99),
+                success, conflicts, rateLimited, serverErrors, transportErrors,
+                success / wallSeconds, conflicts / wallSeconds,
                 requests == 0 ? 0 : technicalErrors / (double) requests, statusesJson(counts))
                 .replace(System.lineSeparator(), "");
     }
@@ -255,6 +312,10 @@ public class OrderRace {
         String eventSummary = summary("EVENT_DETAILS", 2, 1, new long[]{1_000_000, 2_000_000},
                 new int[]{200, 500}, 0, 0, 200);
         if (!eventSummary.contains("\"technicalErrorRate\":0.5000")) throw new AssertionError("acceptedStatuses");
+        String orderSummary = summary("LIMITED", 2, 2, new long[]{1_000_000, 2_000_000},
+                new int[]{201, 409}, 0, 0, 201, 409, 429);
+        if (!orderSummary.contains("\"successThroughput\":0.50")
+                || !orderSummary.contains("\"conflictThroughput\":0.50")) throw new AssertionError("throughputBreakdown");
         System.out.println("OrderRace self-test passed");
     }
 
