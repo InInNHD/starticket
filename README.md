@@ -157,7 +157,7 @@ docker compose logs backend --tail 100
 | 拆单绕过限购 | 事务内统计待支付/已支付票数，结合场次级互斥更新 | 同一用户并发创建订单测试 |
 | 重复请求和回调 | 幂等键唯一约束、状态机校验、冲突后回读既有结果 | 并发幂等下单、支付回调、退款和核销测试 |
 | 消息可靠性 | 业务事务写 Outbox，原子抢占发布，失败重试、死亡记录与人工重放 | RabbitMQ 中断恢复测试 |
-| Redis 可用性 | 活动冷缓存回源 MySQL；Redis 故障时缓存、限流和预锁自动降级 | 真实 Redis 停机与冷/热缓存 Testcontainers 测试 |
+| Redis 可用性 | 活动冷缓存回源 MySQL；1 秒超时后缓存、限流和预锁自动降级 | 真实 Redis 停机与冷/热缓存 Testcontainers 测试 |
 | 多角色运营闭环 | 用户、主办方、管理员、检票员四类权限和审计日志 | Testcontainers 端到端流程测试 |
 | 故障定位 | Problem Details 携带 requestId，Prometheus 指标和预置 Grafana 看板 | 集成测试与 Docker 冒烟验证 |
 

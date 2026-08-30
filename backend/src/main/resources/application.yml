@@ -19,6 +19,8 @@ spring:
     redis:
       host: ${STARTICKET_REDIS_HOST:localhost}
       port: ${STARTICKET_REDIS_PORT:6379}
+      connect-timeout: ${STARTICKET_REDIS_CONNECT_TIMEOUT:1s}
+      timeout: ${STARTICKET_REDIS_COMMAND_TIMEOUT:1s}
       repositories:
         enabled: false
   rabbitmq:
