@@ -3,6 +3,7 @@ package com.starticket.demo;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,10 +26,13 @@ class DemoDataInitializer implements ApplicationRunner {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwords;
+    private final String demoPassword;
 
-    DemoDataInitializer(JdbcTemplate jdbc, PasswordEncoder passwords) {
+    DemoDataInitializer(JdbcTemplate jdbc, PasswordEncoder passwords,
+                        @Value("${app.demo.password:Password123}") String demoPassword) {
         this.jdbc = jdbc;
         this.passwords = passwords;
+        this.demoPassword = demoPassword;
     }
 
     @Override
@@ -248,7 +252,7 @@ class DemoDataInitializer implements ApplicationRunner {
             jdbc.update("""
                     INSERT INTO st_user (username, email, password_hash, enabled, created_at)
                     VALUES (?, ?, ?, TRUE, ?)
-                    """, username, email, passwords.encode("Password123"), Instant.now());
+                    """, username, email, passwords.encode(demoPassword), Instant.now());
         }
         jdbc.update("""
                 INSERT IGNORE INTO st_user_role (user_id, role)

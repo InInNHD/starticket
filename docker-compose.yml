@@ -9,13 +9,16 @@ services:
       STARTICKET_RABBIT_HOST: rabbitmq
       STARTICKET_CORS_ORIGIN: ${STARTICKET_CORS_ORIGIN:-http://localhost:8081}
       STARTICKET_DEMO_ENABLED: ${STARTICKET_DEMO_ENABLED:-true}
+      STARTICKET_DEMO_PASSWORD: ${STARTICKET_DEMO_PASSWORD:-Password123}
       STARTICKET_INFRA_ENABLED: ${STARTICKET_INFRA_ENABLED:-true}
       STARTICKET_ORDER_RATE_LIMIT_MAX: ${STARTICKET_ORDER_RATE_LIMIT_MAX:-10}
       RABBITMQ_USER: ${RABBITMQ_USER:-starticket}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-starticket_dev}
       STARTICKET_JWT_SECRET: ${STARTICKET_JWT_SECRET:-local-docker-jwt-secret-change-me-32b}
+      STARTICKET_PAYMENT_SECRET: ${STARTICKET_PAYMENT_SECRET:-local-payment-callback-secret-32b}
+      STARTICKET_TICKET_SECRET: ${STARTICKET_TICKET_SECRET:-local-ticket-secret-change-me-32b}
     ports:
-      - "${STARTICKET_BACKEND_PORT:-18080}:8080"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:${STARTICKET_BACKEND_PORT:-18080}:8080"
     depends_on:
       mysql:
         condition: service_healthy
@@ -27,7 +30,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "8081:80"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:${STARTICKET_FRONTEND_PORT:-8081}:80"
     depends_on:
       - backend
 
@@ -39,7 +42,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-starticket_dev}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev}
     ports:
-      - "3307:3306"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -51,7 +54,7 @@ services:
   redis:
     image: redis:7.4-alpine
     ports:
-      - "6379:6379"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -64,8 +67,8 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-starticket}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-starticket_dev}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:5672:5672"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
@@ -80,7 +83,7 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:9090:9090"
     depends_on:
       - backend
 
@@ -90,7 +93,7 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     ports:
-      - "13000:3000"
+      - "${STARTICKET_BIND_HOST:-0.0.0.0}:13000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

@@ -136,7 +136,7 @@ docker compose up -d --build
 
 生产或共享环境必须通过 `STARTICKET_JWT_SECRET` 提供至少 32 字节的随机 JWT 密钥；未配置时应用只为本地开发生成一次性随机密钥。
 
-Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Password123`：`admin`、`organizer`、`checker`、`user`。首次启动会增量初始化上海、杭州、深圳、南京的 6 个活动、10 个未来场次、多个票档及 800 余个场次座位，覆盖演唱会、话剧、喜剧、展览和校园活动；重复启动不会覆盖已有订单。共享或生产环境设置 `STARTICKET_DEMO_ENABLED=false`。
+Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Password123`：`admin`、`organizer`、`checker`、`user`。首次启动会增量初始化上海、杭州、深圳、南京的 6 个活动、10 个未来场次、多个票档及 800 余个场次座位，覆盖演唱会、话剧、喜剧、展览和校园活动；重复启动不会覆盖已有订单。共享演示环境必须通过 `STARTICKET_DEMO_PASSWORD` 更换默认密码；生产环境设置 `STARTICKET_DEMO_ENABLED=false`。
 
 如果浏览器提示拒绝连接，先确认 Docker Desktop 已启动，再执行：
 
