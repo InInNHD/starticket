@@ -1,6 +1,27 @@
 # StarTicket 城市演出票务平台
 
-StarTicket 是面向城市演出和校园活动的在线票务平台。项目重点不是堆砌中间件，而是完整实现“活动发布 → 选座锁座 → 下单支付 → 电子票 → 入场核销 → 取消退款”的交易闭环，并验证并发下不超卖、异步消息可恢复、关键接口可观测。
+[![CI](https://github.com/InInNHD/starticket/actions/workflows/ci.yml/badge.svg)](https://github.com/InInNHD/starticket/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/InInNHD/starticket?display_name=tag)](https://github.com/InInNHD/starticket/releases)
+[![Java](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)](backend/pom.xml)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5-6DB33F?logo=springboot&logoColor=white)](backend/pom.xml)
+
+面向城市演出与校园活动的 Java 票务交易平台，完整实现“活动发布 → 选座锁座 → 下单支付 → 电子票 → 入场核销 → 取消退款”，重点验证并发一致性、接口幂等和消息可靠性。
+
+## 一分钟了解
+
+| 维度 | 项目证据 |
+|---|---|
+| 业务闭环 | 用户、主办方、管理员、检票员四角色；覆盖发布、审核、售票、支付、退款与核销 |
+| 并发正确性 | Redis Lua 可选预锁 + MySQL 条件更新最终兜底；限购、幂等回调、单次核销均有并发测试 |
+| 消息可靠性 | 本地事务 Outbox、RabbitMQ 延迟关单、失败重试、死信落库与人工重放 |
+| 可验证性 | 21 项流程/真实依赖测试，18 轮固定资源压测，无重复座位、无超卖 |
+
+```bash
+docker compose up -d --build
+# Web: http://localhost:8081  |  体验账号: user / Password123
+```
+
+[查看页面截图](#页面截图) · [阅读架构方案](docs/02-architecture.md) · [查看真实性能报告](docs/03-performance-report.md) · [打开 Swagger](http://localhost:18080/swagger-ui.html)
 
 ## 项目定位
 
@@ -9,31 +30,9 @@ StarTicket 是面向城市演出和校园活动的在线票务平台。项目重
 - 开发策略：先保证数据库交易闭环，再加入 Redis、RabbitMQ、限流和监控
 - 核心难点：座位库存、订单状态、接口幂等、超时释放、支付回调、票码核销
 
-## 已确定技术栈
+## 技术栈
 
-### 后端
-
-- Java 21
-- Spring Boot 3.5.x
-- Spring MVC、Spring Validation
-- Spring Security + OAuth2 Resource Server（JWT）
-- Spring Data JPA
-- MySQL 8.4
-- Redis 7
-- RabbitMQ 4
-- Flyway
-- Spring Boot Actuator + Micrometer + Prometheus
-- springdoc-openapi
-- Maven
-
-### 前端与工程化
-
-- Vue 3 + TypeScript + Vite
-- Element Plus、Axios
-- Docker Compose
-- JUnit 5、Testcontainers
-- k6 与 Java 21 并发压测脚本
-- GitHub Actions
+`Java 21` · `Spring Boot 3.5` · `Spring Security/JWT` · `JPA/JdbcTemplate` · `MySQL 8.4` · `Redis 7` · `RabbitMQ 4` · `Flyway` · `Vue 3/TypeScript` · `Docker Compose` · `Testcontainers` · `Prometheus/Grafana` · `GitHub Actions`
 
 ## 系统架构
 
