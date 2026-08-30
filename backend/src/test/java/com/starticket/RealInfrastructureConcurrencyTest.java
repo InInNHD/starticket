@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.starticket.infrastructure.OutboxClaimService;
 import com.starticket.order.OrderService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.junit.jupiter.api.BeforeAll;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -78,6 +80,8 @@ class RealInfrastructureConcurrencyTest {
     @Autowired OutboxClaimService outboxClaims;
     @Autowired RabbitTemplate rabbit;
     @Autowired OrderService orders;
+    @Autowired StringRedisTemplate redis;
+    @Autowired MeterRegistry meters;
 
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
     private String admin;
@@ -370,6 +374,58 @@ class RealInfrastructureConcurrencyTest {
         }
     }
 
+    @Test
+    @Order(11)
+    void coldEventCacheLoadsFromMysqlThenServesWarmValue() throws Exception {
+        Fixture fixture = fixture(1, 6);
+        String key = "event:detail:" + fixture.eventId();
+        redis.delete(key);
+        assertThat(redis.hasKey(key)).isFalse();
+
+        HttpResult cold = perform(get("/api/events/{eventId}", fixture.eventId()));
+        assertThat(cold.status()).isEqualTo(200);
+        String originalTitle = json.readTree(cold.body()).get("title").asText();
+        assertThat(redis.hasKey(key)).isTrue();
+        assertThat(redis.getExpire(key)).isPositive();
+
+        jdbc.update("UPDATE st_event SET title = ?, updated_at = ? WHERE id = ?",
+                "数据库已更新标题", Instant.now(), fixture.eventId());
+        HttpResult warm = perform(get("/api/events/{eventId}", fixture.eventId()));
+        assertThat(json.readTree(warm.body()).get("title").asText()).isEqualTo(originalTitle);
+
+        redis.delete(key);
+        HttpResult refreshed = perform(get("/api/events/{eventId}", fixture.eventId()));
+        assertThat(json.readTree(refreshed.body()).get("title").asText()).isEqualTo("数据库已更新标题");
+        assertThat(redis.hasKey(key)).isTrue();
+    }
+
+    @Test
+    @Order(12)
+    void redisOutageFallsBackToMysqlForReadsAndOrders() throws Exception {
+        Fixture fixture = fixture(1, 6);
+        String buyer = account("redis_down_buyer", "redis-down-buyer@example.com", null);
+        double rateBefore = meters.counter("starticket.redis.degraded", "operation", "rate-limit").count();
+        double lockBefore = meters.counter("starticket.redis.degraded", "operation", "seat-lock").count();
+
+        REDIS.stop();
+
+        assertThat(perform(get("/api/events/{eventId}", fixture.eventId())).status()).isEqualTo(200);
+        HttpResult order = perform(orderRequest(buyer, "redis-down-order", orderBody(fixture, fixture.seats())));
+        assertThat(order.status()).isEqualTo(201);
+        String orderNo = json.readTree(order.body()).get("orderNo").asText();
+        assertThat(jdbc.queryForObject("SELECT status FROM st_order WHERE order_no = ?", String.class, orderNo))
+                .isEqualTo("PENDING_PAYMENT");
+        assertThat(jdbc.queryForObject("""
+                SELECT ps.status FROM st_performance_seat ps
+                JOIN st_order_item i ON i.performance_seat_id = ps.id
+                JOIN st_order o ON o.id = i.order_id WHERE o.order_no = ?
+                """, String.class, orderNo)).isEqualTo("LOCKED");
+        assertThat(meters.counter("starticket.redis.degraded", "operation", "rate-limit").count())
+                .isEqualTo(rateBefore + 1);
+        assertThat(meters.counter("starticket.redis.degraded", "operation", "seat-lock").count())
+                .isEqualTo(lockBefore + 1);
+    }
+
     private void waitForRabbitMq() throws Exception {
         for (int i = 0; i < 45; i++) {
             try {
@@ -407,7 +463,7 @@ class RealInfrastructureConcurrencyTest {
         JsonNode seats = json.readTree(perform(get("/api/performances/{id}/seats", performanceId)).body()).get("seats");
         List<Long> seatIds = new java.util.ArrayList<>();
         seats.forEach(seat -> seatIds.add(seat.get("seatId").asLong()));
-        return new Fixture(performanceId, seatIds);
+        return new Fixture(eventId, performanceId, seatIds);
     }
 
     private String account(String username, String email, String role) throws Exception {
@@ -467,6 +523,6 @@ class RealInfrastructureConcurrencyTest {
 
     private long id(String body) throws Exception { return json.readTree(body).get("id").asLong(); }
     private static String bearer(String token) { return "Bearer " + token; }
-    private record Fixture(long performanceId, List<Long> seats) {}
+    private record Fixture(long eventId, long performanceId, List<Long> seats) {}
     private record HttpResult(int status, String body) {}
 }

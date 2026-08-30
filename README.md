@@ -14,7 +14,7 @@
 | 业务闭环 | 用户、主办方、管理员、检票员四角色；覆盖发布、审核、售票、支付、退款与核销 |
 | 并发正确性 | Redis Lua 可选预锁 + MySQL 条件更新最终兜底；限购、幂等回调、单次核销均有并发测试 |
 | 消息可靠性 | 本地事务 Outbox、RabbitMQ 延迟关单、失败重试、死信落库与人工重放 |
-| 可验证性 | 21 项流程/真实依赖测试，18 轮固定资源压测，无重复座位、无超卖 |
+| 可验证性 | 23 项流程/真实依赖测试，18 轮固定资源压测，无重复座位、无超卖 |
 
 ```bash
 docker compose up -d --build
@@ -146,6 +146,7 @@ docker compose logs backend --tail 100
 | 拆单绕过限购 | 事务内统计待支付/已支付票数，结合场次级互斥更新 | 同一用户并发创建订单测试 |
 | 重复请求和回调 | 幂等键唯一约束、状态机校验、冲突后回读既有结果 | 并发幂等下单、支付回调、退款和核销测试 |
 | 消息可靠性 | 业务事务写 Outbox，原子抢占发布，失败重试、死亡记录与人工重放 | RabbitMQ 中断恢复测试 |
+| Redis 可用性 | 活动冷缓存回源 MySQL；Redis 故障时缓存、限流和预锁自动降级 | 真实 Redis 停机与冷/热缓存 Testcontainers 测试 |
 | 多角色运营闭环 | 用户、主办方、管理员、检票员四类权限和审计日志 | Testcontainers 端到端流程测试 |
 | 故障定位 | Problem Details 携带 requestId，Prometheus 指标和预置 Grafana 看板 | 集成测试与 Docker 冒烟验证 |
 
@@ -171,7 +172,7 @@ docker compose logs backend --tail 100
 ## 测试与验证
 
 ```bash
-# 21 个流程及真实依赖并发测试
+# 23 个流程及真实依赖并发测试
 cd backend && mvn test
 
 # 前端类型检查和生产构建
@@ -214,7 +215,7 @@ java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load
 - [x] 活动取消、管理员下架、演出结束后自动结束活动
 - [x] Outbox 多实例原子抢占、超时恢复、消费死信落库重放和关键操作审计
 - [x] 统一 Problem Details 与 requestId 追踪、Swagger JWT 授权和 Grafana 运行监控
-- [x] 21 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名和状态竞争
+- [x] 23 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名、状态竞争、冷缓存和 Redis 故障降级
 
 ## 版本边界
 
