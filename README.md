@@ -105,6 +105,17 @@ admin         活动审核和失败消息重放
 - [架构与技术方案](docs/02-architecture.md)
 - [真实性能测试报告](docs/03-performance-report.md)
 
+## 镜像交付
+
+推送语义化版本标签后，发布流水线会先执行后端、前端和压测工具回归，再向 GHCR 推送后端、前端镜像，最后生成 GitHub Release。`v1.0.0` 对应以下镜像标签：
+
+```bash
+docker pull ghcr.io/ininnhd/starticket-backend:1.0.0
+docker pull ghcr.io/ininnhd/starticket-frontend:1.0.0
+```
+
+镜像同时发布 `1.0` 和 `latest` 标签；源码归档和自动生成的变更说明见 [Releases](https://github.com/InInNHD/starticket/releases)。
+
 ## 本地启动
 
 环境要求：JDK 21、Maven 3.9+、Node.js 22+、Docker Desktop。
@@ -216,6 +227,7 @@ java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load
 - [x] Outbox 多实例原子抢占、超时恢复、消费死信落库重放和关键操作审计
 - [x] 统一 Problem Details 与 requestId 追踪、Swagger JWT 授权和 Grafana 运行监控
 - [x] 23 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名、状态竞争、冷缓存和 Redis 故障降级
+- [x] `v1.0.0` 标签触发回归、GHCR 双镜像发布与 GitHub Release 的交付流水线
 
 ## 版本边界
 
