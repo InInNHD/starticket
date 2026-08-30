@@ -14,7 +14,7 @@
 | 业务闭环 | 用户、主办方、管理员、检票员四角色；覆盖发布、审核、售票、支付、退款与核销 |
 | 并发正确性 | Redis Lua 可选预锁 + MySQL 条件更新最终兜底；限购、幂等回调、单次核销均有并发测试 |
 | 消息可靠性 | 本地事务 Outbox、RabbitMQ 延迟关单、失败重试、死信落库与人工重放 |
-| 可验证性 | 23 项流程/真实依赖测试，18 轮固定资源压测，无重复座位、无超卖 |
+| 可验证性 | 24 项流程/真实依赖测试，18 轮固定资源压测，无重复座位、无超卖 |
 
 ```bash
 docker compose up -d --build
@@ -136,7 +136,7 @@ docker compose up -d --build
 
 生产或共享环境必须通过 `STARTICKET_JWT_SECRET` 提供至少 32 字节的随机 JWT 密钥；未配置时应用只为本地开发生成一次性随机密钥。
 
-Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Password123`：`admin`、`organizer`、`checker`、`user`。同时会初始化一个场馆、活动、场次、票档和 18 个座位。共享或生产环境设置 `STARTICKET_DEMO_ENABLED=false`。
+Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Password123`：`admin`、`organizer`、`checker`、`user`。首次启动会增量初始化上海、杭州、深圳、南京的 6 个活动、10 个未来场次、多个票档及 800 余个场次座位，覆盖演唱会、话剧、喜剧、展览和校园活动；重复启动不会覆盖已有订单。共享或生产环境设置 `STARTICKET_DEMO_ENABLED=false`。
 
 如果浏览器提示拒绝连接，先确认 Docker Desktop 已启动，再执行：
 
@@ -183,7 +183,7 @@ docker compose logs backend --tail 100
 ## 测试与验证
 
 ```bash
-# 23 个流程及真实依赖并发测试
+# 24 个流程及真实依赖并发测试
 cd backend && mvn test
 
 # 前端类型检查和生产构建
@@ -226,7 +226,7 @@ java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load
 - [x] 活动取消、管理员下架、演出结束后自动结束活动
 - [x] Outbox 多实例原子抢占、超时恢复、消费死信落库重放和关键操作审计
 - [x] 统一 Problem Details 与 requestId 追踪、Swagger JWT 授权和 Grafana 运行监控
-- [x] 23 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名、状态竞争、冷缓存和 Redis 故障降级
+- [x] 24 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名、状态竞争、Demo 数据、冷缓存和 Redis 故障降级
 - [x] `v1.0.0` 标签触发回归、GHCR 双镜像发布与 GitHub Release 的交付流水线
 
 ## 版本边界
