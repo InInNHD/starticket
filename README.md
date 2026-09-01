@@ -24,8 +24,6 @@ docker compose up -d --build
 [查看页面截图](#页面截图) · [阅读架构方案](docs/02-architecture.md) · [查看真实性能报告](docs/03-performance-report.md) · [打开 Swagger](http://localhost:18080/swagger-ui.html)
 
 ## 项目定位
-
-- 求职方向：Java 后端开发
 - 架构形态：按业务模块组织的单体应用
 - 开发策略：先保证数据库交易闭环，再加入 Redis、RabbitMQ、限流和监控
 - 核心难点：座位库存、订单状态、接口幂等、超时释放、支付回调、票码核销
@@ -197,11 +195,6 @@ cd frontend && npm ci && npm run build
 java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load/results/event-details-c500-r1.json
 ```
 
-## 可直接放入简历的项目描述
-
-- 基于 Java 21、Spring Boot、MySQL、Redis 与 RabbitMQ 实现城市演出票务闭环，覆盖活动审核、选座锁座、幂等下单、支付回调、电子票核销、取消退款及四角色权限。
-- 设计 Redis Lua 预锁 + MySQL 条件更新的双层库存方案，以数据库作为最终一致性防线；在固定 4 vCPU / 8 GB 环境完成 18 轮库存测试，分别统计成功/冲突吞吐与状态码，验证当前负载下 Redis 路径成功吞吐低 9%～10%，据此保留热点按需启用策略，全程无重复座位和超卖。
-- 使用事务 Outbox、延迟消息、失败重试/死信重放解决订单超时与消息可靠性，并通过 Testcontainers 覆盖并发幂等下单、支付回调、退款和单次核销，接入 Prometheus、Grafana 与 requestId 追踪提升可观测性。
 
 ## 当前进度
 
