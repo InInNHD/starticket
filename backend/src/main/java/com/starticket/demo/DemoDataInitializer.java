@@ -253,6 +253,9 @@ class DemoDataInitializer implements ApplicationRunner {
                     INSERT INTO st_user (username, email, password_hash, enabled, created_at)
                     VALUES (?, ?, ?, TRUE, ?)
                     """, username, email, passwords.encode(demoPassword), Instant.now());
+        } else {
+            jdbc.update("UPDATE st_user SET password_hash = ?, enabled = TRUE WHERE username = ?",
+                    passwords.encode(demoPassword), username);
         }
         jdbc.update("""
                 INSERT IGNORE INTO st_user_role (user_id, role)

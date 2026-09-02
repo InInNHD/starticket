@@ -28,7 +28,7 @@ const mode = ref<'login' | 'register'>('login')
 const loading = ref(false)
 const user = ref<User | null>(null)
 const workspace = ref('user')
-const form = reactive({ username: '', email: '', login: '', password: '' })
+const form = reactive({ username: '', email: '', login: 'admin', password: 'Password123' })
 const title = computed(() => (mode.value === 'login' ? '登录 StarTicket' : '创建账户'))
 
 async function submit() {
