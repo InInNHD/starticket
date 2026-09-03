@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,8 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -178,12 +181,31 @@ public class OrderService {
                 SELECT COUNT(*) FROM st_order
                 WHERE user_id = ? AND (? IS NULL OR status = ?)
                 """, Long.class, userId, normalizedStatus, normalizedStatus);
-        List<OrderView> content = jdbc.query("""
-                SELECT order_no FROM st_order
+        List<OrderHeader> headers = jdbc.query("""
+                SELECT order_no, performance_id, total_amount, status, expires_at, paid_at, created_at
+                FROM st_order
                 WHERE user_id = ? AND (? IS NULL OR status = ?)
                 ORDER BY created_at DESC LIMIT ? OFFSET ?
-                """, (rs, row) -> rs.getString(1), userId, normalizedStatus, normalizedStatus, size, page * size)
-                .stream().map(orderNo -> requireOrder(orderNo, userId)).toList();
+                """, (rs, row) -> new OrderHeader(rs.getString(1), rs.getLong(2), rs.getBigDecimal(3),
+                rs.getString(4), rs.getTimestamp(5).toInstant(),
+                rs.getTimestamp(6) == null ? null : rs.getTimestamp(6).toInstant(),
+                rs.getTimestamp(7).toInstant()), userId, normalizedStatus, normalizedStatus, size, page * size);
+        Map<String, List<OrderItemView>> itemsByOrder = new HashMap<>();
+        if (!headers.isEmpty()) {
+            String placeholders = String.join(",", headers.stream().map(header -> "?").toList());
+            Object[] orderNumbers = headers.stream().map(OrderHeader::orderNo).toArray();
+            jdbc.query("""
+                    SELECT o.order_no, i.id, i.seat_id, i.seat_code, i.tier_name, i.price
+                    FROM st_order_item i JOIN st_order o ON o.id = i.order_id
+                    WHERE o.order_no IN (%s) ORDER BY o.order_no, i.id
+                    """.formatted(placeholders), (RowCallbackHandler) rs -> itemsByOrder
+                    .computeIfAbsent(rs.getString(1), ignored -> new ArrayList<>())
+                    .add(new OrderItemView(rs.getLong(2), rs.getLong(3), rs.getString(4),
+                            rs.getString(5), rs.getBigDecimal(6))), orderNumbers);
+        }
+        List<OrderView> content = headers.stream().map(header -> new OrderView(header.orderNo(),
+                header.performanceId(), header.totalAmount(), header.status(), header.expiresAt(),
+                header.paidAt(), header.createdAt(), itemsByOrder.getOrDefault(header.orderNo(), List.of()))).toList();
         return PageResult.of(content, page, size, total == null ? 0 : total);
     }
 
@@ -349,5 +371,9 @@ public class OrderService {
     }
 
     private record TierSelection(long tierId, String name, int limit, int selected) {
+    }
+
+    private record OrderHeader(String orderNo, long performanceId, BigDecimal totalAmount, String status,
+                               Instant expiresAt, Instant paidAt, Instant createdAt) {
     }
 }

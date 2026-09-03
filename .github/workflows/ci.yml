@@ -14,7 +14,7 @@ jobs:
           distribution: temurin
           java-version: 21
           cache: maven
-      - run: mvn -B test
+      - run: mvn -B verify -Pintegration
         working-directory: backend
       - run: java load/OrderRace.java --self-test
       - uses: actions/setup-node@v5
@@ -26,3 +26,13 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: docker compose up -d --build backend frontend
+      - run: curl --fail --retry 60 --retry-delay 2 --retry-all-errors http://localhost:18080/actuator/health
+      - run: npm run test:e2e
+        working-directory: frontend
+      - if: always()
+        run: docker compose logs backend frontend --tail 200
+      - if: always()
+        run: docker compose down -v

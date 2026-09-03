@@ -120,7 +120,7 @@ WHERE performance_id = ?
 
 ### 6.1 正确性边界
 
-MySQL 是库存事实来源。Redis 只用于提前拦截冲突和降低数据库热点，Redis 成功不等于购票成功。
+MySQL 是库存事实来源。Redis 预锁只用于提前拦截冲突和降低数据库热点，Redis 成功不等于购票成功。基准测试表明当前单实例规模下预锁会增加约 9% 开销，因此默认关闭，通过 `STARTICKET_REDIS_PRELOCK_ENABLED=true` 才启用。
 
 ### 6.2 请求流程
 
@@ -150,7 +150,7 @@ sequenceDiagram
     end
 ```
 
-Redis 锁值必须包含随机 token，释放时通过 Lua 校验 token，避免删除其他请求重新建立的锁。
+Redis 锁值必须包含随机 token，释放时通过 Lua 校验 token，避免删除其他请求重新建立的锁；关闭预锁不影响活动缓存和下单限流。
 
 ## 7. 消息可靠性
 
@@ -181,7 +181,7 @@ Outbox 当前用于订单创建后的延迟关单事件，不把普通查询做�
 
 Swagger 定义全局 JWT Bearer 安全方案，可在 Swagger UI 使用 `Authorize` 调试受保护接口。
 Prometheus 采集业务指标以及 Spring MVC、JVM 和 HikariCP 指标，Grafana 对 HTTP 错误率、
-资源使用和死信数量提供预置面板。
+资源使用和死信数量提供预置面板；告警规则覆盖后端不可用、持续 5xx、Outbox 死亡/积压和 Redis 降级。
 
 ### 用户端
 
@@ -262,5 +262,7 @@ POST   /api/check-in/redeem
 13. [完成] 使用独立预热/正式场次重做三类库存压测，并以专用 Compose 固定 4 vCPU / 8 GB 服务端预算。
 14. [完成] 使用真实 Redis 验证活动冷缓存回源、热缓存命中，以及 Redis 停机后的数据库降级下单。
 15. [完成] 使用版本标签触发完整回归、GHCR 前后端镜像发布与 GitHub Release。
+16. [完成] 拆分快速测试与 Testcontainers 集成测试，并增加 Playwright 完整购票浏览器验收。
+17. [完成] 增加公开演示保护、JWT issuer 校验、监控告警、角色页面懒加载和可回滚镜像部署。
 
 每一步都必须保持应用可运行，不先创建空的微服务或“以后可能使用”的抽象层。

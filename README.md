@@ -14,14 +14,14 @@
 | 业务闭环 | 用户、主办方、管理员、检票员四角色；覆盖发布、审核、售票、支付、退款与核销 |
 | 并发正确性 | Redis Lua 可选预锁 + MySQL 条件更新最终兜底；限购、幂等回调、单次核销均有并发测试 |
 | 消息可靠性 | 本地事务 Outbox、RabbitMQ 延迟关单、失败重试、死信落库与人工重放 |
-| 可验证性 | 24 项流程/真实依赖测试，18 轮固定资源压测，无重复座位、无超卖 |
+| 可验证性 | 27 项流程/真实依赖测试 + Playwright 浏览器验收，18 轮固定资源压测，无重复座位、无超卖 |
 
 ```bash
 docker compose up -d --build
-# Web: http://localhost:8081  |  体验账号: user / Password123
+# Web: http://localhost:8081  |  体验账号: admin / Password123
 ```
 
-[查看页面截图](#页面截图) · [阅读架构方案](docs/02-architecture.md) · [查看真实性能报告](docs/03-performance-report.md) · [打开 Swagger](http://localhost:18080/swagger-ui.html)
+[在线体验](https://starticket.fireflyiv.com) · [查看页面截图](#页面截图) · [阅读架构方案](docs/02-architecture.md) · [查看真实性能报告](docs/03-performance-report.md) · [打开 Swagger](http://localhost:18080/swagger-ui.html)
 
 ## 项目定位
 - 架构形态：按业务模块组织的单体应用
@@ -105,14 +105,14 @@ admin         活动审核和失败消息重放
 
 ## 镜像交付
 
-推送语义化版本标签后，发布流水线会先执行后端、前端和压测工具回归，再向 GHCR 推送后端、前端镜像，最后生成 GitHub Release。`v1.0.0` 对应以下镜像标签：
+推送语义化版本标签后，发布流水线会先执行后端、前端、浏览器交易闭环和压测工具回归，再向 GHCR 推送不可变版本的前后端镜像，最后生成 GitHub Release。`v1.1.0` 对应以下镜像标签：
 
 ```bash
-docker pull ghcr.io/ininnhd/starticket-backend:1.0.0
-docker pull ghcr.io/ininnhd/starticket-frontend:1.0.0
+docker pull ghcr.io/ininnhd/starticket-backend:1.1.0
+docker pull ghcr.io/ininnhd/starticket-frontend:1.1.0
 ```
 
-镜像同时发布 `1.0` 和 `latest` 标签；源码归档和自动生成的变更说明见 [Releases](https://github.com/InInNHD/starticket/releases)。
+镜像同时发布 `1.1` 和 `latest` 标签；服务器可运行 `./deploy/deploy.sh 1.1.0` 健康检查后切换，失败自动回退，`./deploy/deploy.sh rollback` 可主动回滚。源码归档和自动生成的变更说明见 [Releases](https://github.com/InInNHD/starticket/releases)。
 
 ## 本地启动
 
@@ -134,7 +134,7 @@ docker compose up -d --build
 
 生产或共享环境必须通过 `STARTICKET_JWT_SECRET` 提供至少 32 字节的随机 JWT 密钥；未配置时应用只为本地开发生成一次性随机密钥。
 
-Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Password123`：`admin`、`organizer`、`checker`、`user`。首次启动会增量初始化上海、杭州、深圳、南京的 6 个活动、10 个未来场次、多个票档及 800 余个场次座位，覆盖演唱会、话剧、喜剧、展览和校园活动；重复启动不会覆盖已有订单。共享演示环境必须通过 `STARTICKET_DEMO_PASSWORD` 更换默认密码；生产环境设置 `STARTICKET_DEMO_ENABLED=false`。
+Docker Compose 默认开启本地 demo 数据，四个账号密码均为 `Password123`：`admin`、`organizer`、`checker`、`user`。首次启动会增量初始化上海、杭州、深圳、南京的 6 个活动、10 个未来场次、多个票档及 800 余个场次座位，覆盖演唱会、话剧、喜剧、展览和校园活动；重复启动不会覆盖已有订单。公开体验站固定为隔离的演示沙箱，并设置 `STARTICKET_DEMO_PUBLIC=true` 禁止 Outbox/死信人工重放；不要录入真实个人信息。正式业务环境必须设置 `STARTICKET_DEMO_ENABLED=false` 并更换所有密钥。
 
 如果浏览器提示拒绝连接，先确认 Docker Desktop 已启动，再执行：
 
@@ -145,7 +145,7 @@ docker compose logs backend --tail 100
 
 当前活动发布链路为：管理员建立场馆/区域/座位模板 → 主办方创建活动草稿 → 添加场次 → 按场馆区域配置票档 → 提交审核 → 管理员通过或驳回 → 普通用户查看已公开活动。
 
-完整交易链路为：用户选择场次与座位 → Redis Lua 预锁 → MySQL 条件锁座 → 幂等创建待支付订单 → Outbox 发布超时消息 → 模拟支付回调 → 座位售出并生成电子票 → 检票员单次核销；取消、超时或退款会按状态释放库存。
+完整交易链路为：用户选择场次与座位 → 可选 Redis Lua 预锁 → MySQL 条件锁座 → 幂等创建待支付订单 → Outbox 发布超时消息 → 模拟支付回调 → 座位售出并生成电子票 → 检票员单次核销；取消、超时或退款会按状态释放库存。默认使用已被压测证明更适合当前规模的 MySQL 路径，需要热点削峰时才设置 `STARTICKET_REDIS_PRELOCK_ENABLED=true`。
 
 ## 核心难点与实现
 
@@ -161,7 +161,7 @@ docker compose logs backend --tail 100
 
 ## 设计取舍
 
-- MySQL 是库存最终事实来源，Redis 只在热点抢票时承担预锁和削峰；Redis 不可用时允许降级到数据库条件更新。
+- MySQL 是库存最终事实来源；Redis 负责活动缓存和下单限流，预锁默认关闭，仅在热点策略验证后开启，故障时降级到数据库条件更新。
 - 使用本地事务 + Outbox 保证订单和待发送事件一起提交，接受消息的最终一致性，避免在单体项目中引入分布式事务框架。
 - 保留模块化单体，避免为展示技术而拆微服务；当压测证明单体资源或团队边界成为瓶颈时再拆分。
 - 支付采用签名模拟回调，重点验证支付单唯一性、回调幂等和订单状态流转，不在求职项目中伪装真实支付资质。
@@ -181,11 +181,17 @@ docker compose logs backend --tail 100
 ## 测试与验证
 
 ```bash
-# 24 个流程及真实依赖并发测试
+# 15 个 H2 快速测试（不需要 Docker）
 cd backend && mvn test
+
+# 另加 12 个真实 MySQL、Redis、RabbitMQ 集成测试
+cd backend && mvn verify -Pintegration
 
 # 前端类型检查和生产构建
 cd frontend && npm ci && npm run build
+
+# 启动 Compose 后执行完整购票与电子票浏览器验收
+cd frontend && npm run test:e2e
 
 # 固定 4 vCPU / 8 GB、独立预热场次的完整库存压测（PowerShell 7）
 ./load/Prepare-Sustained.ps1
@@ -210,7 +216,7 @@ java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load
 - [x] Redis Lua 预锁、热点缓存、限流和数据库降级
 - [x] RabbitMQ 延迟关单、Outbox 重试、死信查询和定时补偿
 - [x] Testcontainers 真实 MySQL、Redis、RabbitMQ 并发一致性测试
-- [x] Prometheus 业务指标、Grafana 预置仪表盘、Swagger 和 GitHub Actions
+- [x] Prometheus 业务指标、告警规则、Grafana 预置仪表盘、Swagger 和 GitHub Actions
 - [x] 固定 4 vCPU / 8 GB，独立预热/正式场次的 MySQL-only 与 Redis Lua + MySQL 三轮性能对比
 - [x] 18 轮固定库存测试分项统计 `201/409/429/5xx`，SQL 断言无重复座位和超卖
 - [x] 热门活动详情 500 并发三轮验收，36768 次正式请求无服务端错误
@@ -219,8 +225,11 @@ java load/OrderRace.java --event-details http://localhost:18081 1 500 10 30 load
 - [x] 活动取消、管理员下架、演出结束后自动结束活动
 - [x] Outbox 多实例原子抢占、超时恢复、消费死信落库重放和关键操作审计
 - [x] 统一 Problem Details 与 requestId 追踪、Swagger JWT 授权和 Grafana 运行监控
-- [x] 24 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名、状态竞争、Demo 数据、冷缓存和 Redis 故障降级
-- [x] `v1.0.0` 标签触发回归、GHCR 双镜像发布与 GitHub Release 的交付流水线
+- [x] 27 个高价值流程及真实依赖并发测试，覆盖权限、归属、签名、状态竞争、Demo 数据、冷缓存和 Redis 故障降级
+- [x] Playwright 自动完成登录、选座、下单、支付和电子票二维码浏览器验收
+- [x] JWT 签名、过期时间与 issuer 校验，公开演示环境禁用危险运维写操作
+- [x] 订单分页批量装配明细、角色工作台按需加载和静态资源长期缓存
+- [x] `v1.1.0` 标签触发完整回归、GHCR 不可变镜像发布、健康检查部署与版本回滚
 
 ## 版本边界
 

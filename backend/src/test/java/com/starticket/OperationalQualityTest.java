@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.demo.public=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @ExtendWith(OutputCaptureExtension.class)
@@ -143,6 +143,15 @@ class OperationalQualityTest {
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
                 .andExpect(jsonPath("$.security[0].bearerAuth").isArray());
+    }
+
+    @Test
+    void publicDemoBlocksDangerousMessageReplay() throws Exception {
+        String admin = account("quality_demo_admin", "quality-demo-admin@example.com", "ADMIN");
+        mvc.perform(post("/api/admin/outbox/1/retry").header("Authorization", bearer(admin)))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/admin/messages/dead/1/retry").header("Authorization", bearer(admin)))
+                .andExpect(status().isForbidden());
     }
 
     private String account(String username, String email, String role) throws Exception {

@@ -9,8 +9,10 @@ services:
       STARTICKET_RABBIT_HOST: rabbitmq
       STARTICKET_CORS_ORIGIN: ${STARTICKET_CORS_ORIGIN:-http://localhost:8081}
       STARTICKET_DEMO_ENABLED: ${STARTICKET_DEMO_ENABLED:-true}
+      STARTICKET_DEMO_PUBLIC: ${STARTICKET_DEMO_PUBLIC:-false}
       STARTICKET_DEMO_PASSWORD: ${STARTICKET_DEMO_PASSWORD:-Password123}
       STARTICKET_INFRA_ENABLED: ${STARTICKET_INFRA_ENABLED:-true}
+      STARTICKET_REDIS_PRELOCK_ENABLED: ${STARTICKET_REDIS_PRELOCK_ENABLED:-false}
       STARTICKET_ORDER_RATE_LIMIT_MAX: ${STARTICKET_ORDER_RATE_LIMIT_MAX:-10}
       RABBITMQ_USER: ${RABBITMQ_USER:-starticket}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-starticket_dev}
@@ -82,6 +84,7 @@ services:
     command: ["--config.file=/etc/prometheus/prometheus.yml"]
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
     ports:
       - "${STARTICKET_BIND_HOST:-0.0.0.0}:9090:9090"
     depends_on:

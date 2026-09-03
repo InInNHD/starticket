@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
@@ -41,10 +42,13 @@ class OperationsController {
 
     private final JdbcTemplate jdbc;
     private final AuditLogService audits;
+    private final boolean publicDemo;
 
-    OperationsController(JdbcTemplate jdbc, AuditLogService audits) {
+    OperationsController(JdbcTemplate jdbc, AuditLogService audits,
+                         @Value("${app.demo.public:false}") boolean publicDemo) {
         this.jdbc = jdbc;
         this.audits = audits;
+        this.publicDemo = publicDemo;
     }
 
     @GetMapping("/dead")
@@ -58,6 +62,7 @@ class OperationsController {
 
     @PostMapping("/{id}/retry")
     void retry(@PathVariable long id, Authentication authentication) {
+        if (publicDemo) throw new ApiException(HttpStatus.FORBIDDEN, "公开演示环境禁止重试 Outbox");
         int updated = jdbc.update("""
                 UPDATE st_outbox_event
                 SET status = 'PENDING', retry_count = 0, next_retry_at = ?, last_error = NULL,
@@ -135,9 +140,12 @@ class DeadMessageService {
 class DeadMessageController {
 
     private final DeadMessageService messages;
+    private final boolean publicDemo;
 
-    DeadMessageController(DeadMessageService messages) {
+    DeadMessageController(DeadMessageService messages,
+                          @Value("${app.demo.public:false}") boolean publicDemo) {
         this.messages = messages;
+        this.publicDemo = publicDemo;
     }
 
     @GetMapping("/dead")
@@ -147,6 +155,7 @@ class DeadMessageController {
 
     @PostMapping("/dead/{id}/retry")
     void replay(@PathVariable long id, Authentication authentication) {
+        if (publicDemo) throw new ApiException(HttpStatus.FORBIDDEN, "公开演示环境禁止重放死信");
         messages.replay(id, authentication.getName());
     }
 }

@@ -41,10 +41,13 @@ spring:
 app:
   demo:
     enabled: ${STARTICKET_DEMO_ENABLED:false}
+    public: ${STARTICKET_DEMO_PUBLIC:false}
     password: ${STARTICKET_DEMO_PASSWORD:Password123}
   infrastructure:
     enabled: ${STARTICKET_INFRA_ENABLED:true}
   order:
+    redis-prelock:
+      enabled: ${STARTICKET_REDIS_PRELOCK_ENABLED:false}
     rate-limit:
       max: ${STARTICKET_ORDER_RATE_LIMIT_MAX:10}
       window: ${STARTICKET_ORDER_RATE_LIMIT_WINDOW:PT10S}

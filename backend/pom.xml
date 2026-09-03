@@ -13,7 +13,7 @@
 
     <groupId>com.starticket</groupId>
     <artifactId>starticket-backend</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <name>StarTicket Backend</name>
     <description>城市演出票务平台后端</description>
 
@@ -122,4 +122,27 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>3.5.6</version>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

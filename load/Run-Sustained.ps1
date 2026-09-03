@@ -34,6 +34,7 @@ function Wait-Backend {
 function Set-Scheme([string]$scheme) {
     $env:PERF_DEMO_ENABLED = "false"
     $env:PERF_INFRA_ENABLED = if ($scheme -eq "REDIS") { "true" } else { "false" }
+    $env:PERF_REDIS_PRELOCK_ENABLED = if ($scheme -eq "REDIS") { "true" } else { "false" }
     docker compose -f $composeFile up -d --build --force-recreate backend | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "无法切换到 $scheme 方案" }
     Wait-Backend
@@ -228,5 +229,6 @@ WHERE o.performance_id=$($row.PerformanceId) AND o.status IN ('PENDING_PAYMENT',
 } finally {
     Remove-Item Env:PERF_DEMO_ENABLED -ErrorAction SilentlyContinue
     Remove-Item Env:PERF_INFRA_ENABLED -ErrorAction SilentlyContinue
+    Remove-Item Env:PERF_REDIS_PRELOCK_ENABLED -ErrorAction SilentlyContinue
     & (Join-Path $PSScriptRoot "Restore-Demo.ps1")
 }

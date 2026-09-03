@@ -41,19 +41,23 @@ public class RedisSeatGuard {
 
     private final StringRedisTemplate redis;
     private final MeterRegistry meters;
+    private final boolean prelockEnabled;
     private final int rateLimitMax;
     private final long rateLimitWindowMillis;
 
     public RedisSeatGuard(StringRedisTemplate redis, MeterRegistry meters,
+                          @Value("${app.order.redis-prelock.enabled:false}") boolean prelockEnabled,
                           @Value("${app.order.rate-limit.max:10}") int rateLimitMax,
                           @Value("${app.order.rate-limit.window:PT10S}") Duration rateLimitWindow) {
         this.redis = redis;
         this.meters = meters;
+        this.prelockEnabled = prelockEnabled;
         this.rateLimitMax = rateLimitMax;
         this.rateLimitWindowMillis = rateLimitWindow.toMillis();
     }
 
     public boolean acquire(long performanceId, List<Long> seatIds, String token, Duration ttl) {
+        if (!prelockEnabled) return true;
         try {
             Long result = redis.execute(ACQUIRE, keys(performanceId, seatIds), token, String.valueOf(ttl.toMillis()));
             if (result == null || result != 1) meters.counter("starticket.redis.seat.lock.failed").increment();
@@ -66,6 +70,7 @@ public class RedisSeatGuard {
     }
 
     public void release(long performanceId, List<Long> seatIds, String token) {
+        if (!prelockEnabled) return;
         try { redis.execute(RELEASE, keys(performanceId, seatIds), token); }
         catch (RuntimeException ignored) { }
     }

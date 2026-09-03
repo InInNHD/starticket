@@ -24,6 +24,23 @@ input {
   font: inherit;
 }
 
+.demo-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  color: #d8ccff;
+  font-size: 13px;
+  text-align: center;
+}
+
+.dashboard-banner {
+  position: static;
+  margin-bottom: 12px;
+  transform: none;
+}
+
 .shell {
   width: min(1120px, calc(100% - 40px));
   min-height: 100vh;

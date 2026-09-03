@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import AdminEvents from './AdminEvents.vue'
-import AdminVenues from './AdminVenues.vue'
-import OrganizerEvents from './OrganizerEvents.vue'
 import PublicEvents from './PublicEvents.vue'
-import CheckerPanel from './CheckerPanel.vue'
-import AdminOperations from './AdminOperations.vue'
-import AdminOrders from './AdminOrders.vue'
 import { api, errorMessage } from './api'
+
+const AdminEvents = defineAsyncComponent(() => import('./AdminEvents.vue'))
+const AdminVenues = defineAsyncComponent(() => import('./AdminVenues.vue'))
+const OrganizerEvents = defineAsyncComponent(() => import('./OrganizerEvents.vue'))
+const CheckerPanel = defineAsyncComponent(() => import('./CheckerPanel.vue'))
+const AdminOperations = defineAsyncComponent(() => import('./AdminOperations.vue'))
+const AdminOrders = defineAsyncComponent(() => import('./AdminOrders.vue'))
 
 type User = {
   id: number
@@ -94,6 +95,7 @@ onMounted(async () => {
 
 <template>
   <template v-if="!user">
+    <div class="demo-banner">公开演示沙箱 · 管理员账号已预填 · 请勿录入真实个人信息</div>
     <main class="shell">
       <section class="intro">
         <span class="eyebrow">STAR TICKET</span>
@@ -133,6 +135,7 @@ onMounted(async () => {
   </template>
 
   <main v-else class="dashboard-shell">
+    <div class="demo-banner dashboard-banner">公开演示沙箱 · 数据仅用于项目展示</div>
     <header class="dashboard-header">
       <div><strong>StarTicket</strong><span>{{ user.username }} · {{ user.roles.join(' / ') }}</span></div>
       <el-button @click="logout">退出登录</el-button>
