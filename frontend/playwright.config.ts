@@ -6,7 +6,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:8081',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:8081',
     trace: 'retain-on-failure',
     ...devices['Desktop Chrome'],
     launchOptions: process.env.PLAYWRIGHT_EXECUTABLE_PATH
