@@ -24,7 +24,7 @@ cd "$project_dir"
 export STARTICKET_VERSION="$requested"
 compose=(docker compose -f docker-compose.yml -f deploy/compose.prod.yml)
 "${compose[@]}" pull backend frontend
-"${compose[@]}" up -d --no-build
+"${compose[@]}" up -d --no-build backend frontend
 
 for attempt in {1..60}; do
   if curl --fail --silent http://127.0.0.1:${STARTICKET_FRONTEND_PORT:-8081}/healthz >/dev/null; then
@@ -39,7 +39,7 @@ done
 echo "StarTicket $requested 健康检查失败" >&2
 if [[ -n "$current" && "$current" != "$requested" ]]; then
   export STARTICKET_VERSION="$current"
-  "${compose[@]}" up -d --no-build
+  "${compose[@]}" up -d --no-build backend frontend
   echo "已回滚到 $current" >&2
 fi
 exit 1
