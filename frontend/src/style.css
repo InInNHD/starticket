@@ -237,6 +237,11 @@ input {
   overflow: hidden;
 }
 
+.el-tabs__content,
+.el-drawer__body {
+  color: #303133;
+}
+
 .event-draft-grid {
   grid-template-columns: 1.3fr 0.7fr 1.4fr;
 }
@@ -300,7 +305,7 @@ input {
   padding: 10px 4px;
   border: 1px solid #64647a;
   border-radius: 8px;
-  color: inherit;
+  color: #f7f7f8;
   background: #242432;
   cursor: pointer;
 }
@@ -329,6 +334,7 @@ input {
   padding: 10px;
   overflow-wrap: anywhere;
   border-radius: 8px;
+  color: #f7f7f8;
   background: #111118;
 }
 
