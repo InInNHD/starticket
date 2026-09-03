@@ -30,6 +30,12 @@ jobs:
         working-directory: frontend
       - run: docker compose up -d --build backend frontend
       - run: curl --fail --retry 60 --retry-delay 2 --retry-all-errors http://localhost:18080/actuator/health
+      - name: Wait for demo data readiness
+        run: >-
+          curl --fail --retry 60 --retry-delay 2 --retry-all-errors
+          -H "Content-Type: application/json"
+          --data '{"login":"admin","password":"Password123"}'
+          http://localhost:18080/api/auth/login
       - run: npm run test:e2e
         working-directory: frontend
       - if: always()
